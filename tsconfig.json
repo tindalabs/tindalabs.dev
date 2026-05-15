@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./*", "../shield/src/*"],
+      "@tindalabs/blindspot": ["../blindspot-ux/packages/web/src/index.ts"],
+      "@tindalabs/blindspot-next": ["../blindspot-ux/packages/next/src/index.ts"],
+      "@tindalabs/scent-sdk": ["../scent/packages/sdk/src/index.ts"],
+      "@tindalabs/shield": ["../shield/src/index.ts"]
+    }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
