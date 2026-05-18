@@ -1,7 +1,8 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { assess, ContentProtector } from '@tindalabs/shield';
+import { assess, attachShieldToSpan, ContentProtector } from '@tindalabs/shield';
 import type { ShieldAssessment } from '@tindalabs/shield';
+import { getRouteSpan } from '@tindalabs/blindspot';
 import { init } from '@tindalabs/scent-sdk';
 import type { ScentObservation } from '@tindalabs/scent-sdk';
 
@@ -110,7 +111,7 @@ export default function LiveStack() {
 
   function enableProtection() {
     if (!contentRef.current || protectorRef.current) return;
-    const protector = new ContentProtector(buildOptions(strategies));
+    const protector = attachShieldToSpan(buildOptions(strategies), () => getRouteSpan() ?? null);
     protector.protect();
     protectorRef.current = protector;
     setProtectionOn(true);
