@@ -1,7 +1,8 @@
 import Nav from '../components/Nav';
 import LiveStack from '../components/LiveStack';
+import CodeBlock from '../components/CodeBlock';
 
-export default function Home() {
+export default async function Home() {
   return (
     <>
       <Nav />
@@ -71,7 +72,7 @@ export default function Home() {
               </div>
             </div>
             <div>
-              <pre>{`import { BlindspotProvider } from '@tindalabs/blindspot-react';
+              <CodeBlock lang="tsx" code={`import { BlindspotProvider } from '@tindalabs/blindspot-react';
 import { useSpan } from '@tindalabs/blindspot-react';
 import { recordEvent } from '@tindalabs/blindspot';
 
@@ -90,7 +91,7 @@ function CheckoutButton() {
   }
 
   return <button onClick={handleClick}>Checkout</button>;
-}`}</pre>
+}`} />
             </div>
           </div>
         </div>
@@ -101,7 +102,7 @@ function CheckoutButton() {
         <div className="container">
           <div className="pkg-grid code-first">
             <div>
-              <pre>{`import { assess, ContentProtector } from '@tindalabs/shield';
+              <CodeBlock code={`import { assess, ContentProtector } from '@tindalabs/shield';
 
 // One-shot environment assessment
 const result = await assess();
@@ -122,7 +123,7 @@ console.log(result.risk);
 span.setAttributes(result.spanAttributes);
 
 // Or merge into a Scent observation
-const obs = await scent.observe({ extraSignals: result.signals });`}</pre>
+const obs = await scent.observe({ extraSignals: result.signals });`} />
             </div>
             <div className="pkg-copy">
               <span className="chip chip-indigo">Shield</span>
@@ -175,7 +176,7 @@ const obs = await scent.observe({ extraSignals: result.signals });`}</pre>
               </div>
             </div>
             <div>
-              <pre>{`import { init } from '@tindalabs/scent-sdk';
+              <CodeBlock code={`import { init } from '@tindalabs/scent-sdk';
 
 const scent = init({
   apiKey: 'proj_...',
@@ -198,7 +199,7 @@ await scent.flush();
 
 scent.on('risk_elevated', ({ score, flags }) => {
   // Block signup, require CAPTCHA, trigger step-up auth
-});`}</pre>
+});`} />
             </div>
           </div>
         </div>
@@ -212,7 +213,7 @@ scent.on('risk_elevated', ({ score, flags }) => {
             Each package works independently. Together they give you a complete picture of every
             session: what happened, who did it, and whether to trust them.
           </p>
-          <pre style={{ maxWidth: '100%' }}>{`import { BlindspotProvider, useSpan } from '@tindalabs/blindspot-react';
+          <CodeBlock code={`import { BlindspotProvider, useSpan } from '@tindalabs/blindspot-react';
 import { assess } from '@tindalabs/shield';
 import { init } from '@tindalabs/scent-sdk';
 
@@ -240,7 +241,7 @@ async function onLogin(userId: string) {
 // 4. Every OTel span gets identity + risk context automatically
 //    scent.identity.id, scent.identity.confidence, scent.risk.score
 //    shield.devtools.open, shield.automation.webdriver, ...
-//    ux.session.time_to_first_interaction_ms, ux.input.paste_ratio, ...`}</pre>
+//    ux.session.time_to_first_interaction_ms, ux.input.paste_ratio, ...`} />
         </div>
       </section>
 
