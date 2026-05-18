@@ -1,0 +1,42 @@
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel-collector.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otel-collector.yaml
+    ports:
+      - "4318:4318"   # OTLP HTTP — browser SDK and scent-server export here
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"   # Tempo HTTP API
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards/providers.yaml:/etc/grafana/provisioning/dashboards/providers.yaml
+      # Dashboards are mounted directly from each product repo — no copies, always up to date.
+      # Requires sibling repos cloned alongside this one: ../scent and ../blindspot-ux
+      - ../../scent/infra/grafana/provisioning/dashboards/scent-server.json:/etc/grafana/provisioning/dashboards/scent-server.json:ro
+      - ../../blindspot-ux/infra/grafana/provisioning/dashboards/blindspot-overview.json:/etc/grafana/provisioning/dashboards/blindspot-overview.json:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3100:3000"   # Grafana UI
+    depends_on:
+      - tempo
+
+volumes:
+  tempo-data:
+  grafana-data:
