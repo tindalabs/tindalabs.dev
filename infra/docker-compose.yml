@@ -32,6 +32,8 @@ services:
       - ../../scent/infra/grafana/provisioning/dashboards/scent-server.json:/etc/grafana/provisioning/dashboards/scent-server.json:ro
       - ../../blindspot-ux/infra/grafana/provisioning/dashboards/blindspot-overview.json:/etc/grafana/provisioning/dashboards/blindspot-overview.json:ro
       - grafana-data:/var/lib/grafana
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3100:3000"   # Grafana UI
     depends_on:
