@@ -27,7 +27,7 @@ export default function Home() {
       </section>
 
       {/* ── Stack overview ─────────────────────────────────────────── */}
-      <section style={{ padding: '4rem 0', background: '#0d1117', borderBottom: '1px solid #1e2d40' }}>
+      <section style={{ padding: '4rem 0', background: '#111827', borderBottom: '1px solid #1e2d40' }}>
         <div className="container">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: '#1e2d40' }}>
             {[
@@ -35,7 +35,7 @@ export default function Home() {
               { chip: 'chip-indigo', name: 'Shield',     npm: '@tindalabs/shield',     desc: 'Tamper detection — DevTools, automation drivers, extension injection, headless environments.' },
               { chip: 'chip-violet', name: 'Scent',      npm: '@tindalabs/scent-sdk',  desc: 'Probabilistic identity continuity — confident even after cookie deletion, VPNs, and browser updates.' },
             ].map((pkg) => (
-              <div key={pkg.name} style={{ background: '#0d1117', padding: '1.75rem 1.5rem' }}>
+              <div key={pkg.name} style={{ background: '#111827', padding: '1.75rem 1.5rem' }}>
                 <span className={`chip ${pkg.chip}`}>{pkg.name}</span>
                 <p style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b', marginBottom: '0.75rem' }}>{pkg.npm}</p>
                 <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.55 }}>{pkg.desc}</p>
@@ -60,6 +60,7 @@ export default function Home() {
               <ul className="features">
                 <li>Automatic route instrumentation for React Router, Vue Router, and Next.js App Router</li>
                 <li>Web vitals (LCP, CLS, FID) as first-class span attributes</li>
+                <li>Behavioral signals: time-to-first-interaction, paste ratio, mouse entropy, interaction rate — bot detection without a separate SDK</li>
                 <li><code>useSpan</code> / <code>useBlindspot</code> hooks for manual instrumentation</li>
                 <li>Consent-gated — pauses collection until <code>grantConsent()</code> is called</li>
                 <li>Composes with Scent: identity context attaches to every span automatically</li>
@@ -98,7 +99,7 @@ function CheckoutButton() {
       {/* ── Shield ─────────────────────────────────────────────────── */}
       <section id="shield">
         <div className="container">
-          <div className="pkg-grid">
+          <div className="pkg-grid code-first">
             <div>
               <pre>{`import { assess, ContentProtector } from '@tindalabs/shield';
 
@@ -162,7 +163,8 @@ const obs = await scent.observe({ extraSignals: result.signals });`}</pre>
               <ul className="features">
                 <li>SimHash + weighted Jaccard matching — no deterministic hashes, no brittle equality checks</li>
                 <li>Drift-tolerant: a browser update or new IP doesn&apos;t break identity continuity</li>
-                <li>Multi-layer persistence: localStorage, IndexedDB, cookies, ETag, Cache Storage</li>
+                <li><code>scent.identify(userId)</code> links anonymous device identity to authenticated accounts — enabling "N accounts, same device" fraud queries</li>
+                <li>Private browsing and storage restriction detection built-in (<code>storage.restricted</code>)</li>
                 <li>Persistence policies (<code>conservative | balanced | aggressive | forensic</code>) as a first-class compliance lever</li>
                 <li>Risk engine: coordinated behavior, storage amnesia, impossible transitions, automation scoring</li>
                 <li>Self-hostable: PostgreSQL + Redis, single <code>docker compose up</code></li>
@@ -182,33 +184,28 @@ const scent = init({
 });
 
 const obs = await scent.observe();
+// obs.identity.confidence  → 0.91
+// obs.identity.continuity  → 'confirmed'
+// obs.identity.isNew       → false
 
-console.log(obs.identity);
-// {
-//   id:          'sct_8f3a...',
-//   confidence:  0.91,
-//   continuity:  'confirmed',
-//   isNew:       false,
-// }
+// After the user logs in, link their account ID.
+// Enables: "how many accounts share this device?"
+await scent.identify(currentUser.id);
+await scent.flush();
 
-console.log(obs.drift);
-// { detected: true, delta: { 'net.connection_type': 'wifi→cellular' }, entropy: 0.08 }
-
-console.log(obs.risk);
-// { score: 0.12, flags: [] }
+// Query the reverse: all identities ever seen for this account
+// GET /v1/account/:userId/identities → fraud cluster detection
 
 scent.on('risk_elevated', ({ score, flags }) => {
-  // Block checkout, require step-up auth, etc.
-});
-
-await scent.flush();`}</pre>
+  // Block signup, require CAPTCHA, trigger step-up auth
+});`}</pre>
             </div>
           </div>
         </div>
       </section>
 
       {/* ── Compose ────────────────────────────────────────────────── */}
-      <section style={{ background: '#0d1117' }}>
+      <section style={{ background: '#111827' }}>
         <div className="container">
           <h2 style={{ fontSize: '1.5rem', marginBottom: '0.6rem' }}>Composed, they cover the full session layer</h2>
           <p style={{ color: '#94a3b8', marginBottom: '2rem', maxWidth: '600px', lineHeight: 1.6 }}>
@@ -233,9 +230,17 @@ async function onPageLoad() {
   // obs.risk.score          → composite threat score (device + behavior + shield signals)
 }
 
-// 3. Every OTel span gets identity + risk context automatically
+// 3. After login: link the authenticated user to the Scent identity.
+//    Enables "how many accounts share this device?" fraud queries.
+async function onLogin(userId: string) {
+  await scent.identify(userId);
+  await scent.flush();
+}
+
+// 4. Every OTel span gets identity + risk context automatically
 //    scent.identity.id, scent.identity.confidence, scent.risk.score
-//    shield.devtools.open, shield.automation.webdriver, ...`}</pre>
+//    shield.devtools.open, shield.automation.webdriver, ...
+//    ux.session.time_to_first_interaction_ms, ux.input.paste_ratio, ...`}</pre>
         </div>
       </section>
 
