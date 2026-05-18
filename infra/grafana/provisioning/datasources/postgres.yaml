@@ -9,11 +9,11 @@ datasources:
     # maps to the host machine, where postgres:5432 is exposed via docker-compose.
     # Requires extra_hosts: host.docker.internal:host-gateway on the Grafana service.
     url: host.docker.internal:5432
-    database: scent
     user: scent
     secureJsonData:
       password: scent_dev
     jsonData:
+      database: scent
       sslmode: disable
       postgresVersion: 1600
       timescaledb: false
