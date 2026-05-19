@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { assess, attachShieldToSpan, ContentProtector } from '@tindalabs/shield';
 import type { ShieldAssessment } from '@tindalabs/shield';
-import { getTracer, getRouteContext } from '@tindalabs/blindspot';
+import { getTracer, getRouteContext, getRouteSpan } from '@tindalabs/blindspot';
 import { init } from '@tindalabs/scent-sdk';
 import type { ScentObservation } from '@tindalabs/scent-sdk';
 
@@ -93,6 +93,18 @@ export default function LiveStack() {
       });
       await scentClient.flush();
       setScent(scentResult);
+
+      const routeSpan = getRouteSpan();
+      if (routeSpan) {
+        routeSpan.setAttribute('scent.identity.id',         scentResult.identity.id);
+        routeSpan.setAttribute('scent.identity.confidence', scentResult.identity.confidence);
+        routeSpan.setAttribute('scent.identity.continuity', scentResult.identity.continuity);
+        routeSpan.setAttribute('scent.identity.is_new',     scentResult.identity.isNew);
+        routeSpan.setAttribute('scent.drift.detected',      scentResult.drift.detected);
+        routeSpan.setAttribute('scent.drift.entropy',       scentResult.drift.entropy);
+        routeSpan.setAttribute('scent.risk.score',          scentResult.risk.score);
+      }
+
       setStatus('done');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
