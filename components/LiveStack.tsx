@@ -2,12 +2,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { assess, attachShieldToSpan, ContentProtector, assessAndProtect } from '@tindalabs/shield';
 import type { ShieldAssessment, PolicyResult } from '@tindalabs/shield';
-import { getTracer, getRouteContext, getRouteSpan } from '@tindalabs/blindspot';
+import { getTracer, getRouteContext, getRouteSpan, recordEvent } from '@tindalabs/blindspot';
 import { init } from '@tindalabs/scent-sdk';
 import type { ScentObservation } from '@tindalabs/scent-sdk';
 
 type Status = 'idle' | 'running' | 'done' | 'error';
 type PolicyStatus = 'idle' | 'running' | 'done';
+type LinkStatus = 'idle' | 'running' | 'done' | 'error';
+
+const DEMO_ACCOUNT_ID = 'demo-user@tindalabs.io';
 
 const DEMO_POLICIES = [
   {
@@ -29,13 +32,15 @@ const DEMO_POLICIES = [
 ];
 
 type Strategies = {
-  preventSelection:        boolean;
-  preventContextMenu:      boolean;
-  preventKeyboardShortcuts:boolean;
-  preventPrinting:         boolean;
-  preventScreenshots:      boolean;
-  enableWatermark:         boolean;
-  preventDevTools:         boolean;
+  preventSelection:         boolean;
+  preventContextMenu:       boolean;
+  preventKeyboardShortcuts: boolean;
+  preventPrinting:          boolean;
+  preventScreenshots:       boolean;
+  preventClipboard:         boolean;
+  enableWatermark:          boolean;
+  preventDevTools:          boolean;
+  preventExtensions:        boolean;
 };
 
 const STRATEGY_LABELS: { key: keyof Strategies; label: string }[] = [
@@ -44,8 +49,10 @@ const STRATEGY_LABELS: { key: keyof Strategies; label: string }[] = [
   { key: 'preventKeyboardShortcuts',  label: 'Keyboard shortcuts'   },
   { key: 'preventPrinting',           label: 'Print / Save as PDF'  },
   { key: 'preventScreenshots',        label: 'Screenshot capture'   },
+  { key: 'preventClipboard',          label: 'Clipboard copy/cut'   },
   { key: 'enableWatermark',           label: 'Watermark overlay'    },
   { key: 'preventDevTools',           label: 'DevTools detection'   },
+  { key: 'preventExtensions',         label: 'Extension access'     },
 ];
 
 const WATERMARK_OPTS = {
@@ -59,8 +66,10 @@ const DEFAULT_STRATEGIES: Strategies = {
   preventKeyboardShortcuts: true,
   preventPrinting:          true,
   preventScreenshots:       true,
+  preventClipboard:         true,
   enableWatermark:          true,
   preventDevTools:          true,
+  preventExtensions:        true,
 };
 
 export default function LiveStack() {
@@ -84,7 +93,38 @@ export default function LiveStack() {
   const [matchedIndexes,   setMatchedIndexes]   = useState<Set<number>>(new Set());
   const [activeStrategies, setActiveStrategies] = useState<string[]>([]);
 
+  // Account linking state — calls scentClient.identify() via the SDK method
+  const scentClientRef  = useRef<ReturnType<typeof init> | null>(null);
+  const [linkStatus,      setLinkStatus]      = useState<LinkStatus>('idle');
+  const [localLinkCount,  setLocalLinkCount]  = useState(0);
+  const [linkError,       setLinkError]       = useState<string | null>(null);
+
+  // Blindspot custom event state
+  const [eventCount,    setEventCount]    = useState(0);
+  const [lastEventName, setLastEventName] = useState<string | null>(null);
+
   useEffect(() => () => { policyRef.current?.dispose(); }, []);
+
+  async function linkIdentity() {
+    if (!scentClientRef.current) return;
+    setLinkStatus('running');
+    setLinkError(null);
+    try {
+      await scentClientRef.current.identify(DEMO_ACCOUNT_ID);
+      setLocalLinkCount(c => c + 1);
+      setLinkStatus('done');
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : String(e));
+      setLinkStatus('error');
+    }
+  }
+
+  function emitDemoEvent() {
+    const name = 'demo.content.viewed';
+    recordEvent(name, { component: 'livestack', session_event: eventCount + 1 });
+    setEventCount(c => c + 1);
+    setLastEventName(name);
+  }
 
   async function runPolicy() {
     setPolicyStatus('running');
@@ -161,6 +201,8 @@ export default function LiveStack() {
     onContextMenuAttempt:      ()              => setLastEvent('Context menu blocked'),
     onPrintAttempt:            ()              => setLastEvent('Print attempt blocked'),
     onKeyboardShortcutBlocked: ()              => setLastEvent('Keyboard shortcut blocked'),
+    onClipboardAttempt:        ()              => setLastEvent('Clipboard access blocked'),
+    onExtensionDetected:       ()              => setLastEvent('Extension access blocked'),
   };
 
   async function run() {
@@ -176,6 +218,7 @@ export default function LiveStack() {
         endpoint: 'http://localhost:3003/v1',
         persistence: 'balanced',
       });
+      scentClientRef.current = scentClient;
       const scentResult = await scentClient.observe({
         extraSignals: shieldResult.signals as unknown as Record<string, string | number | boolean | null>,
       });
@@ -203,9 +246,9 @@ export default function LiveStack() {
   function buildOptions(s: Strategies) {
     return {
       ...s,
-      targetElement:   contentRef.current!,
+      targetElement:    contentRef.current!,
       watermarkOptions: s.enableWatermark ? WATERMARK_OPTS : undefined,
-      customHandlers:  handlers,
+      customHandlers:   handlers,
     };
   }
 
@@ -257,6 +300,8 @@ export default function LiveStack() {
   const continuityColor = (c: string) => ({
     confirmed: '#4ade80', probable: '#60a5fa', uncertain: '#fbbf24', unknown: '#94a3b8',
   }[c] ?? '#94a3b8');
+
+  const extensionDetected = Boolean(shield?.signals['shield.extension.detected']);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -323,7 +368,7 @@ export default function LiveStack() {
                 <Row label="Is new"      value={scent.identity.isNew ? 'Yes' : 'No'} />
                 <Row label="Drift"       value={scent.drift.detected ? `Detected (entropy ${scent.drift.entropy.toFixed(2)})` : 'None'} />
               </div>
-              <div style={{ borderTop: '1px solid #1e2d40', paddingTop: '0.75rem' }}>
+              <div style={{ borderTop: '1px solid #1e2d40', paddingTop: '0.75rem', marginBottom: '0.75rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.83rem', marginBottom: '0.4rem' }}>
                   <span style={{ color: '#94a3b8' }}>Confidence</span>
                   <span style={{ fontWeight: 600, color: '#a5b4fc' }}>{(scent.identity.confidence * 100).toFixed(0)}%</span>
@@ -332,12 +377,81 @@ export default function LiveStack() {
                   <div style={{ height: '100%', width: `${scent.identity.confidence * 100}%`, background: '#6366f1', borderRadius: 99 }} />
                 </div>
               </div>
+              {/* Persistence mode note */}
+              <div style={{ borderTop: '1px solid #1e2d40', paddingTop: '0.6rem' }}>
+                <pre style={{
+                  fontSize: '0.68rem', color: '#475569', fontFamily: 'monospace',
+                  lineHeight: 1.65, margin: 0, background: 'transparent', whiteSpace: 'pre-wrap',
+                }}>
+                  {`init({ persistence: 'balanced' })\n// 'aggressive'   — all storage APIs, max cross-session recall\n// 'conservative' — session memory only, no persistence`}
+                </pre>
+              </div>
             </>
           )}
         </div>
       </div>
 
-      {/* ── Row 2: Shield · ContentProtector ── */}
+      {/* ── Row 2: Scent · identify() ── */}
+      <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.25rem 1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', fontWeight: 600 }}>
+            Scent · identify()
+          </span>
+          <button
+            className="btn btn-primary"
+            style={{ padding: '0.3rem 0.85rem', fontSize: '0.8rem' }}
+            onClick={linkIdentity}
+            disabled={!scent || linkStatus === 'running'}
+          >
+            {linkStatus === 'running' ? 'Linking…' : linkStatus === 'done' ? 'Link again' : 'Link identity'}
+          </button>
+        </div>
+
+        {/* Code note always visible */}
+        <pre style={{
+          background: '#0d1117', borderRadius: 6, padding: '0.6rem 0.9rem',
+          fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace',
+          lineHeight: 1.65, margin: '0 0 0.75rem',
+          border: '1px solid #1e2d40', whiteSpace: 'pre-wrap',
+        }}>
+          {`await scentClient.identify('${DEMO_ACCOUNT_ID}');\n// Links this fingerprint → account ID in one call`}
+        </pre>
+
+        {!scent && (
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Runs after identity is resolved above.</p>
+        )}
+
+        {scent && linkStatus === 'idle' && (
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+            Links <code style={{ color: '#94a3b8' }}>{scent.identity.id.slice(0, 12)}…</code> to account{' '}
+            <code style={{ color: '#94a3b8' }}>{DEMO_ACCOUNT_ID}</code>.
+          </p>
+        )}
+
+        {linkError && (
+          <p style={{ color: '#f87171', fontSize: '0.83rem' }}>{linkError}</p>
+        )}
+
+        {linkStatus === 'done' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <Row label="Identity ID" value={`${scent!.identity.id.slice(0, 16)}…`} mono />
+            <Row label="Account"     value={DEMO_ACCOUNT_ID} />
+            {localLinkCount > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.83rem' }}>
+                <span style={{ color: '#94a3b8' }}>Linked this session</span>
+                <span style={{ padding: '0.15rem 0.6rem', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, background: '#14532d', color: '#4ade80' }}>
+                  {localLinkCount}×
+                </span>
+              </div>
+            )}
+            <p style={{ color: '#475569', fontSize: '0.72rem', fontStyle: 'italic', marginTop: '0.25rem' }}>
+              Repeated calls are idempotent and increment a server-side counter — try clicking again.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Row 3: Shield · ContentProtector ── */}
       <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.25rem 1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
           <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', fontWeight: 600 }}>
@@ -385,7 +499,7 @@ export default function LiveStack() {
             </div>
             {!protectionOn && (
               <p style={{ marginTop: '1rem', fontSize: '0.72rem', color: '#475569', fontStyle: 'italic' }}>
-                Try selecting this text. Enable protection to block it.
+                Try selecting or copying this text. Enable protection to block it.
               </p>
             )}
           </div>
@@ -397,16 +511,23 @@ export default function LiveStack() {
             </p>
 
             {STRATEGY_LABELS.map(({ key, label }) => {
-              const isDevTools = key === 'preventDevTools';
+              const isDevTools   = key === 'preventDevTools';
+              const isExtensions = key === 'preventExtensions';
               const on = strategies[key];
               return (
                 <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.83rem' }}>
                   <span style={{ color: '#94a3b8' }}>{label}</span>
                   <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                    {/* DevTools live status badge (shown alongside its toggle when active) */}
+                    {/* DevTools live status badge */}
                     {isDevTools && protectionOn && on && devToolsOpen !== null && (
                       <span style={{ padding: '0.1rem 0.45rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 500, background: devToolsOpen ? '#2c1010' : '#14532d', color: devToolsOpen ? '#f87171' : '#4ade80' }}>
                         {devToolsOpen ? 'Open' : 'Clear'}
+                      </span>
+                    )}
+                    {/* Extension detection badge — shown when assess() found an extension */}
+                    {isExtensions && extensionDetected && (
+                      <span style={{ padding: '0.1rem 0.45rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 500, background: '#2c1010', color: '#f87171' }}>
+                        detected
                       </span>
                     )}
                     <button
@@ -437,7 +558,7 @@ export default function LiveStack() {
         </div>
       </div>
 
-      {/* ── Row 3: Shield · assessAndProtect() ── */}
+      {/* ── Row 4: Shield · assessAndProtect() ── */}
       <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.25rem 1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
           <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', fontWeight: 600 }}>
@@ -522,6 +643,47 @@ export default function LiveStack() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Row 5: Blindspot · recordEvent() ── */}
+      <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.25rem 1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+          <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', fontWeight: 600 }}>
+            Blindspot · recordEvent()
+          </span>
+          <button
+            className="btn btn-primary"
+            style={{ padding: '0.3rem 0.85rem', fontSize: '0.8rem' }}
+            onClick={emitDemoEvent}
+          >
+            {eventCount === 0 ? 'Record event' : 'Record again'}
+          </button>
+        </div>
+
+        <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
+          Attach semantic events to the active OTel route trace — they appear inline with click and form data in Tempo.
+        </p>
+
+        {/* Code note */}
+        <pre style={{
+          background: '#0d1117', borderRadius: 6, padding: '0.7rem 1rem',
+          fontSize: '0.7rem', color: '#64748b', fontFamily: 'monospace',
+          lineHeight: 1.65, margin: '0 0 0.75rem',
+          border: '1px solid #1e2d40', whiteSpace: 'pre-wrap',
+        }}>
+          {`recordEvent('checkout.started', {\n  'cart.item_count': 3,\n  'cart.total_usd': 142.50,\n  'user.plan': 'pro',\n});\n// → span added to the active route trace in Tempo`}
+        </pre>
+
+        {eventCount > 0 && lastEventName && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <Row label="Event name"    value={lastEventName} mono />
+            <Row label="component"     value="livestack" mono />
+            <Row label="session_event" value={String(eventCount)} />
+            <p style={{ color: '#475569', fontSize: '0.72rem', fontStyle: 'italic', marginTop: '0.25rem' }}>
+              Emitted to the active route span — open Tempo and search the current trace to see it.
+            </p>
           </div>
         )}
       </div>
