@@ -1,12 +1,32 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { assess, attachShieldToSpan, ContentProtector } from '@tindalabs/shield';
-import type { ShieldAssessment } from '@tindalabs/shield';
+import { assess, attachShieldToSpan, ContentProtector, assessAndProtect } from '@tindalabs/shield';
+import type { ShieldAssessment, PolicyResult } from '@tindalabs/shield';
 import { getTracer, getRouteContext, getRouteSpan } from '@tindalabs/blindspot';
 import { init } from '@tindalabs/scent-sdk';
 import type { ScentObservation } from '@tindalabs/scent-sdk';
 
 type Status = 'idle' | 'running' | 'done' | 'error';
+type PolicyStatus = 'idle' | 'running' | 'done';
+
+const DEMO_POLICIES = [
+  {
+    when: { riskScore: { gte: 0.2 } },
+    enable: ['enableWatermark'] as const,
+    watermarkOptions: (a: ShieldAssessment) => ({ text: `RISK-${Math.round(a.risk.score * 100)}`, opacity: 0.15 }),
+    condLabel: 'riskScore ≥ 0.2',
+  },
+  {
+    when: { riskScore: { gte: 0.5 } },
+    enable: ['preventSelection', 'preventClipboard'] as const,
+    condLabel: 'riskScore ≥ 0.5',
+  },
+  {
+    when: { signals: { 'shield.automation.headless': true } as Record<string, boolean> },
+    enable: ['preventContextMenu', 'preventKeyboardShortcuts'] as const,
+    condLabel: 'headless = true',
+  },
+];
 
 type Strategies = {
   preventSelection:        boolean;
@@ -56,6 +76,66 @@ export default function LiveStack() {
   const [strategies, setStrategies]     = useState<Strategies>({ ...DEFAULT_STRATEGIES });
   const [devToolsOpen, setDevToolsOpen] = useState<boolean | null>(null);
   const [lastEvent,    setLastEvent]    = useState<string | null>(null);
+
+  // Policy engine state
+  const policyRef      = useRef<InstanceType<typeof ContentProtector> | null>(null);
+  const [policyStatus,     setPolicyStatus]     = useState<PolicyStatus>('idle');
+  const [policyResult,     setPolicyResult]     = useState<PolicyResult | null>(null);
+  const [matchedIndexes,   setMatchedIndexes]   = useState<Set<number>>(new Set());
+  const [activeStrategies, setActiveStrategies] = useState<string[]>([]);
+
+  useEffect(() => () => { policyRef.current?.dispose(); }, []);
+
+  async function runPolicy() {
+    setPolicyStatus('running');
+    setPolicyResult(null);
+    setMatchedIndexes(new Set());
+    setActiveStrategies([]);
+    policyRef.current?.dispose();
+    policyRef.current = null;
+
+    try {
+      const captured = shield; // reuse existing assessment if available
+      const result = await assessAndProtect(null, {
+        policies: DEMO_POLICIES.map(({ when, enable, watermarkOptions }) =>
+          watermarkOptions
+            ? { when, enable: [...enable], watermarkOptions }
+            : { when, enable: [...enable] },
+        ),
+        ...(captured ? { assessFn: async () => captured } : { assessOptions: { timeout: 600 } }),
+        spanEmitter: (name, attrs) => {
+          const span = getTracer().startSpan(name, { attributes: attrs }, getRouteContext());
+          span.end();
+        },
+      });
+      setPolicyResult(result);
+      if (result.protector) {
+        policyRef.current = result.protector as InstanceType<typeof ContentProtector>;
+      }
+
+      // Reconstruct which rules matched for highlighting
+      const score   = result.assessment.risk.score;
+      const signals = result.assessment.signals;
+      const matched = new Set<number>();
+      const strategies: string[] = [];
+      DEMO_POLICIES.forEach((rule, i) => {
+        const { riskScore, signals: sigCond } = rule.when as { riskScore?: { gte?: number }; signals?: Partial<ShieldAssessment['signals']> };
+        let ok = true;
+        if (riskScore?.gte !== undefined && score < riskScore.gte) ok = false;
+        if (sigCond) {
+          for (const [k, v] of Object.entries(sigCond)) {
+            if (signals[k as keyof typeof signals] !== v) { ok = false; break; }
+          }
+        }
+        if (ok) { matched.add(i); rule.enable.forEach(s => strategies.push(s)); }
+      });
+      setMatchedIndexes(matched);
+      setActiveStrategies([...new Set(strategies)]);
+      setPolicyStatus('done');
+    } catch {
+      setPolicyStatus('idle');
+    }
+  }
 
   // Seed devtools state from assess() result when available
   useEffect(() => {
@@ -337,6 +417,95 @@ export default function LiveStack() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── Row 3: Shield · assessAndProtect() ── */}
+      <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.25rem 1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+          <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', fontWeight: 600 }}>
+            Shield · assessAndProtect()
+          </span>
+          <button
+            className="btn btn-primary"
+            style={{ padding: '0.3rem 0.85rem', fontSize: '0.8rem' }}
+            onClick={runPolicy}
+            disabled={policyStatus === 'running'}
+          >
+            {policyStatus === 'running' ? 'Assessing…' : 'Run policy engine'}
+          </button>
+        </div>
+
+        {/* Policy rules */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1rem' }}>
+          {DEMO_POLICIES.map((rule, i) => {
+            const matched = matchedIndexes.has(i);
+            return (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
+                background: matched ? '#1a1f3a' : '#1a2235',
+                border: `1px solid ${matched ? '#6366f1' : '#1e2d40'}`,
+                borderRadius: 6, padding: '0.4rem 0.65rem', fontSize: '0.78rem',
+                transition: 'border-color 0.2s',
+              }}>
+                <span style={{ color: '#94a3b8', fontFamily: 'monospace', minWidth: 130 }}>{rule.condLabel}</span>
+                <span style={{ color: '#475569' }}>→</span>
+                <div style={{ display: 'flex', gap: '0.3rem', flex: 1, flexWrap: 'wrap' }}>
+                  {rule.enable.map(s => (
+                    <span key={s} style={{
+                      fontSize: '0.68rem', padding: '0.1rem 0.4rem', borderRadius: 4,
+                      background: matched ? '#1e3a4a' : '#1e2d40',
+                      color: matched ? '#7dd3fc' : '#64748b',
+                    }}>{s}</span>
+                  ))}
+                </div>
+                {matched && (
+                  <span style={{ fontSize: '0.68rem', fontWeight: 600, padding: '0.1rem 0.4rem', borderRadius: 4, background: '#2d1f3a', color: '#a78bfa', marginLeft: 'auto' }}>
+                    matched
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Result */}
+        {policyStatus === 'idle' && (
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+            {shield ? 'Reuses the assess() result above — no extra network call.' : 'Click Run to assess and apply policies.'}
+          </p>
+        )}
+        {policyResult && (
+          <div style={{ borderTop: '1px solid #1e2d40', paddingTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.83rem' }}>
+              <span style={{ color: '#64748b' }}>Risk score</span>
+              <span style={{ fontWeight: 600, color: riskColor(policyResult.assessment.risk.score) }}>
+                {(policyResult.assessment.risk.score * 100).toFixed(0)}%
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.83rem' }}>
+              <span style={{ color: '#64748b' }}>Matched rules</span>
+              <span style={{ color: '#e2e8f0' }}>{matchedIndexes.size} / {DEMO_POLICIES.length}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.83rem' }}>
+              <span style={{ color: '#64748b' }}>Protection</span>
+              <span style={{ padding: '0.15rem 0.5rem', borderRadius: 20, fontSize: '0.75rem', fontWeight: 500,
+                background: policyResult.protector ? '#1e1e40' : '#14532d',
+                color:      policyResult.protector ? '#a5b4fc' : '#4ade80' }}>
+                {policyResult.protector ? 'Active' : 'Not activated'}
+              </span>
+            </div>
+            {activeStrategies.length > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '0.83rem', gap: '0.5rem' }}>
+                <span style={{ color: '#64748b', flexShrink: 0 }}>Strategies</span>
+                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {activeStrategies.map(s => (
+                    <span key={s} style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem', borderRadius: 4, background: '#1e3a4a', color: '#7dd3fc' }}>{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
     </div>
