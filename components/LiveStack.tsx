@@ -93,6 +93,14 @@ export default function LiveStack() {
     setActiveStrategies([]);
     policyRef.current?.dispose();
     policyRef.current = null;
+    // Dispose any active manual protector for the same reason — overlapping
+    // enableWatermark observers on body + child div cause a MutationObserver loop.
+    if (protectorRef.current) {
+      protectorRef.current.dispose();
+      protectorRef.current = null;
+      setProtectionOn(false);
+      setLastEvent(null);
+    }
 
     try {
       const captured = shield; // reuse existing assessment if available
@@ -203,6 +211,16 @@ export default function LiveStack() {
 
   function enableProtection() {
     if (!contentRef.current || protectorRef.current) return;
+    // Dispose any active policy-engine protector first — two simultaneous
+    // ContentProtectors with enableWatermark trigger a MutationObserver loop.
+    if (policyRef.current) {
+      policyRef.current.dispose();
+      policyRef.current = null;
+      setPolicyResult(null);
+      setMatchedIndexes(new Set());
+      setActiveStrategies([]);
+      setPolicyStatus('idle');
+    }
     const protector = attachShieldToSpan(buildOptions(strategies), (name, attrs) => {
       const span = getTracer().startSpan(name, { attributes: attrs }, getRouteContext());
       span.end();
