@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Nav from '../components/Nav';
 import LiveStack from '../components/LiveStack';
 import CodeBlock from '../components/CodeBlock';
@@ -8,8 +9,17 @@ export default async function Home() {
       <Nav />
 
       {/* ── Hero ───────────────────────────────────────────────────── */}
-      <section style={{ padding: '7rem 0 5rem', borderBottom: '1px solid #1e2d40' }}>
-        <div className="container">
+      <section style={{ position: 'relative', padding: '7rem 0 5rem', borderBottom: '1px solid #1e2d40', overflow: 'hidden' }}>
+        <Image
+          src="/hero.png"
+          alt=""
+          fill
+          priority
+          style={{ objectFit: 'cover', objectPosition: 'center', opacity: 0.45 }}
+        />
+        {/* bottom fade into page background */}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 40%, #0d1117 100%)', pointerEvents: 'none' }} />
+        <div className="container" style={{ position: 'relative' }}>
           <p style={{ color: '#6366f1', fontSize: '0.8rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
             Open source · Self-hostable · Composable
           </p>
