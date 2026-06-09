@@ -8,6 +8,11 @@
     "start": "next start"
   },
   "dependencies": {
+    "@tindalabs/blindspot": "^0.1.1",
+    "@tindalabs/blindspot-next": "^0.1.2",
+    "@tindalabs/scent-engine": "^0.1.0",
+    "@tindalabs/scent-sdk": "^0.1.0",
+    "@tindalabs/shield": "^0.1.0",
     "next": "^15.3.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",

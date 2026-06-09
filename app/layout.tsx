@@ -15,9 +15,14 @@ export const metadata: Metadata = {
   },
 };
 
+// Site-wide Blindspot instrumentation. There is no collector behind the static
+// site, so the endpoint is a same-origin path that simply 404s — OpenTelemetry's
+// default diag logger is a no-op, so failed background exports are silent and
+// never touch the UI. The LiveStack demo renders real Blindspot spans in-page
+// instead of shipping them to Tempo.
 const blindspotConfig = {
   serviceName: 'tindalabs-dev',
-  endpoint: '/v1/traces',
+  endpoint: '/otel',
   privacy: { consentRequired: false },
 };
 
