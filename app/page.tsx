@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import heroImg from '../public/hero.png';
 import Nav from '../components/Nav';
 import LiveStack from '../components/LiveStack';
 import CodeBlock from '../components/CodeBlock';
@@ -14,7 +15,7 @@ export default async function Home() {
       {/* ── Hero ───────────────────────────────────────────────────── */}
       <section style={{ position: 'relative', padding: '7rem 0 5rem', borderBottom: '1px solid #1e2d40', overflow: 'hidden' }}>
         <Image
-          src="/hero.png"
+          src={heroImg}
           alt=""
           fill
           priority
