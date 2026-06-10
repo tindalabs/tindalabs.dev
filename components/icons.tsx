@@ -2,6 +2,23 @@ import type { CSSProperties } from 'react';
 
 const base: CSSProperties = { width: '1em', height: '1em', verticalAlign: '-0.125em', flexShrink: 0 };
 
+/** Tindalabs monogram mark (matches app/icon.svg). Sized via the `size` prop. */
+export function LogoMark({ size = 22 }: { size?: number }) {
+  return (
+    <svg viewBox="0 0 32 32" width={size} height={size} aria-hidden="true" style={{ flexShrink: 0, display: 'block' }}>
+      <defs>
+        <linearGradient id="tl-logo-bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#4f46e5" />
+          <stop offset="1" stopColor="#312e81" />
+        </linearGradient>
+      </defs>
+      <rect width="32" height="32" rx="7" fill="url(#tl-logo-bg)" />
+      <rect x="6.5" y="8" width="19" height="5" rx="1.5" fill="#ffffff" />
+      <rect x="13.5" y="8" width="5" height="16" rx="1.5" fill="#ffffff" />
+    </svg>
+  );
+}
+
 /** GitHub mark (Octicons mark-github). Inherits text color via currentColor. */
 export function GitHubIcon() {
   return (
