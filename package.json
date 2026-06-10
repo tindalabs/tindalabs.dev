@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@isonimus/glitch-js": "^1.0.3",
     "@tindalabs/blindspot": "^0.1.1",
     "@tindalabs/blindspot-next": "^0.1.2",
     "@tindalabs/scent-engine": "^0.1.0",

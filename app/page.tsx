@@ -2,6 +2,8 @@ import Image from 'next/image';
 import Nav from '../components/Nav';
 import LiveStack from '../components/LiveStack';
 import CodeBlock from '../components/CodeBlock';
+import GlitchText from '../components/GlitchText';
+import InstallLine from '../components/InstallLine';
 
 export default async function Home() {
   return (
@@ -23,9 +25,15 @@ export default async function Home() {
           <p style={{ color: '#6366f1', fontSize: '0.8rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
             Open source · Self-hostable · Composable
           </p>
-          <h1 style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)', lineHeight: 1.15, marginBottom: '1.25rem', maxWidth: '720px' }}>
-            Browser security &amp; identity<br />for hostile environments
-          </h1>
+          <GlitchText
+            as="h1"
+            effects={['scramble']}
+            trigger="manual"
+            autoRunMs={1400}
+            style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)', lineHeight: 1.15, marginBottom: '1.25rem', maxWidth: '720px' }}
+          >
+            Browser security &amp; identity for hostile environments
+          </GlitchText>
           <p style={{ color: '#94a3b8', fontSize: '1.1rem', maxWidth: '600px', marginBottom: '2rem', lineHeight: 1.65 }}>
             Three composable SDKs that handle what your analytics platform ignores: what your users
             are running, whether they&apos;ve been there before, and whether you can trust the session.
@@ -47,7 +55,7 @@ export default async function Home() {
               { chip: 'chip-violet', name: 'Scent',      npm: '@tindalabs/scent-sdk',  desc: 'Probabilistic identity continuity — confident even after cookie deletion, VPNs, and browser updates.' },
             ].map((pkg) => (
               <div key={pkg.name} style={{ background: '#111827', padding: '1.75rem 1.5rem' }}>
-                <span className={`chip ${pkg.chip}`}>{pkg.name}</span>
+                <GlitchText as="span" className={`chip ${pkg.chip}`} trigger="hover" effects={['rgbSplit']}>{pkg.name}</GlitchText>
                 <p style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b', marginBottom: '0.75rem' }}>{pkg.npm}</p>
                 <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.55 }}>{pkg.desc}</p>
               </div>
@@ -76,7 +84,7 @@ export default async function Home() {
                 <li>Consent-gated — pauses collection until <code>grantConsent()</code> is called</li>
                 <li>Composes with Scent: identity context attaches to every span automatically</li>
               </ul>
-              <div className="install-line">npm install @tindalabs/blindspot-react</div>
+              <InstallLine command="npm install @tindalabs/blindspot-react" />
               <div className="pkg-links">
                 <a href="https://github.com/tindalabs/blindspot" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="blindspot-github">GitHub ↗</a>
               </div>
@@ -150,7 +158,7 @@ const obs = await scent.observe({ extraSignals: result.signals });`} />
                 <li>Extension detection via DOM selectors and JS global signatures</li>
                 <li>Active protection: prevent selection, printing, screenshots, and watermarking via <code>ContentProtector</code></li>
               </ul>
-              <div className="install-line">npm install @tindalabs/shield</div>
+              <InstallLine command="npm install @tindalabs/shield" />
               <div className="pkg-links">
                 <a href="https://github.com/tindalabs/shield" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="shield-github">GitHub ↗</a>
               </div>
@@ -180,7 +188,7 @@ const obs = await scent.observe({ extraSignals: result.signals });`} />
                 <li>Risk engine: coordinated behavior, storage amnesia, impossible transitions, automation scoring</li>
                 <li>Self-hostable: PostgreSQL + Redis, single <code>docker compose up</code></li>
               </ul>
-              <div className="install-line">npm install @tindalabs/scent-sdk</div>
+              <InstallLine command="npm install @tindalabs/scent-sdk" />
               <div className="pkg-links">
                 <a href="https://github.com/tindalabs/scent" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="scent-github">GitHub ↗</a>
               </div>
@@ -210,6 +218,52 @@ await scent.flush();
 scent.on('risk_elevated', ({ score, flags }) => {
   // Block signup, require CAPTCHA, trigger step-up auth
 });`} />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Why not X? ─────────────────────────────────────────────── */}
+      <section id="why">
+        <div className="container">
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '0.6rem' }}>Why not just use what you have?</h2>
+          <p style={{ color: '#94a3b8', marginBottom: '2rem', maxWidth: '600px', lineHeight: 1.6 }}>
+            Each package replaces a tool you might reach for first — and is built differently on purpose.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+            {/* Blindspot */}
+            <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.5rem' }}>
+              <span className="chip chip-blue" style={{ marginBottom: '0.75rem', display: 'inline-block' }}>Blindspot</span>
+              <h3 style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#f8fafc' }}>Why not session replay?</h3>
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                Hotjar, FullStory and RUM tools <strong style={{ color: '#e2e8f0' }}>record the DOM</strong> — snapshots
+                that carry PII and CIPA / wiretapping exposure. Blindspot emits structured OTel spans instead:
+                <em> what happened</em>, not a recording. No DOM capture, no PII, and it drops straight into the
+                OTel pipeline you already run.
+              </p>
+            </div>
+            {/* Shield */}
+            <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.5rem' }}>
+              <span className="chip chip-indigo" style={{ marginBottom: '0.75rem', display: 'inline-block' }}>Shield</span>
+              <h3 style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#f8fafc' }}>Why not <code>disable-devtool</code>?</h3>
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                <code>disable-devtool</code> gives you a boolean and only watches DevTools. Shield returns
+                <strong style={{ color: '#e2e8f0' }}> structured risk signals and a calibrated 0–1 score</strong> across
+                DevTools, automation drivers, headless and extensions — as <code>shield.*</code> OTel attributes you
+                compose into a decision, not a blunt block.
+              </p>
+            </div>
+            {/* Scent */}
+            <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.5rem' }}>
+              <span className="chip chip-violet" style={{ marginBottom: '0.75rem', display: 'inline-block' }}>Scent</span>
+              <h3 style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#f8fafc' }}>Why not FingerprintJS?</h3>
+              <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6 }}>
+                A deterministic hash mints a brand-new visitor the moment one signal changes. In a reproducible
+                benchmark under realistic drift (browser updates, VPNs, anti-fingerprinting), deterministic
+                fingerprints re-identify <strong style={{ color: '#f87171' }}>~45–55%</strong> of returning visitors —
+                Scent, <strong style={{ color: '#4ade80' }}>100%</strong>, with an explainable confidence score.
+                Self-hostable, MIT.
+              </p>
             </div>
           </div>
         </div>
@@ -272,6 +326,8 @@ async function onLogin(userId: string) {
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <span style={{ color: '#64748b', fontSize: '0.875rem' }}>
             MIT License · <a href="https://github.com/tindalabs" target="_blank" rel="noreferrer">github.com/tindalabs</a>
+            {' · '}glitch fx by{' '}
+            <a href="https://www.npmjs.com/package/@isonimus/glitch-js" target="_blank" rel="noreferrer">@isonimus/glitch-js</a>
           </span>
           <div style={{ display: 'flex', gap: '1.5rem' }}>
             {[
