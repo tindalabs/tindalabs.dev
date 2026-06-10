@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { GitHubIcon } from './icons';
 
 export default function Nav() {
   return (
@@ -25,7 +26,7 @@ export default function Nav() {
             style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
             data-blindspot-label="nav-github"
           >
-            GitHub ↗
+            <GitHubIcon /> GitHub
           </a>
         </nav>
       </div>

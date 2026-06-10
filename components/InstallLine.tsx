@@ -12,7 +12,7 @@ export default function InstallLine({ command }: { command: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* clipboard blocked (e.g. insecure context) — no-op */
+      /* clipboard blocked (e.g. insecure context) - no-op */
     }
   }
 

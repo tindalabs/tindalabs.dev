@@ -23,7 +23,7 @@ interface GlitchTextProps {
  * is vanilla DOM, so we run it client-side in an effect against a ref and clean
  * up with destroy(). It is purely decorative: glitch-js is dynamically imported
  * (code-split, never blocks first paint) and the whole thing is skipped when the
- * visitor prefers reduced motion — which Blindspot itself reports, so honoring it
+ * visitor prefers reduced motion - which Blindspot itself reports, so honoring it
  * is on-brand.
  */
 export default function GlitchText({
@@ -60,7 +60,7 @@ export default function GlitchText({
         }
       })
       .catch(() => {
-        /* decorative only — ignore load failures */
+        /* decorative only - ignore load failures */
       });
 
     return () => {

@@ -4,6 +4,7 @@ import LiveStack from '../components/LiveStack';
 import CodeBlock from '../components/CodeBlock';
 import GlitchText from '../components/GlitchText';
 import InstallLine from '../components/InstallLine';
+import { GitHubIcon, NpmIcon } from '../components/icons';
 
 export default async function Home() {
   return (
@@ -25,14 +26,17 @@ export default async function Home() {
           <p style={{ color: '#6366f1', fontSize: '0.8rem', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '1.25rem' }}>
             Open source · Self-hostable · Composable
           </p>
+          {/* Explicit <br/> pins the headline to two lines, and minHeight reserves
+              its box - so the scramble effect can't shift its glyph widths into a
+              wrap-point change and jump the content below (CLS). */}
           <GlitchText
             as="h1"
             effects={['scramble']}
             trigger="manual"
             autoRunMs={1400}
-            style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)', lineHeight: 1.15, marginBottom: '1.25rem', maxWidth: '720px' }}
+            style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)', lineHeight: 1.15, marginBottom: '1.25rem', maxWidth: '800px', minHeight: '2.3em' }}
           >
-            Browser security &amp; identity for hostile environments
+            Browser security &amp; identity<br />for hostile environments
           </GlitchText>
           <p style={{ color: '#94a3b8', fontSize: '1.1rem', maxWidth: '600px', marginBottom: '2rem', lineHeight: 1.65 }}>
             Three composable SDKs that handle what your analytics platform ignores: what your users
@@ -40,7 +44,7 @@ export default async function Home() {
           </p>
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <a href="#blindspot" className="btn btn-primary" data-blindspot-label="hero-get-started">Get started</a>
-            <a href="https://github.com/tindalabs" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="hero-github">View on GitHub ↗</a>
+            <a href="https://github.com/tindalabs" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="hero-github"><GitHubIcon /> View on GitHub</a>
           </div>
         </div>
       </section>
@@ -50,9 +54,9 @@ export default async function Home() {
         <div className="container">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1px', background: '#1e2d40' }}>
             {[
-              { chip: 'chip-blue',   name: 'Blindspot',  npm: '@tindalabs/blindspot',  desc: 'OTel browser observability — spans for every navigation, interaction, and fetch without PII.' },
-              { chip: 'chip-indigo', name: 'Shield',     npm: '@tindalabs/shield',     desc: 'Tamper detection — DevTools, automation drivers, extension injection, headless environments.' },
-              { chip: 'chip-violet', name: 'Scent',      npm: '@tindalabs/scent-sdk',  desc: 'Probabilistic identity continuity — confident even after cookie deletion, VPNs, and browser updates.' },
+              { chip: 'chip-blue',   name: 'Blindspot',  npm: '@tindalabs/blindspot',  desc: 'OTel browser observability - spans for every navigation, interaction, and fetch without PII.' },
+              { chip: 'chip-indigo', name: 'Shield',     npm: '@tindalabs/shield',     desc: 'Tamper detection - DevTools, automation drivers, extension injection, headless environments.' },
+              { chip: 'chip-violet', name: 'Scent',      npm: '@tindalabs/scent-sdk',  desc: 'Probabilistic identity continuity - confident even after cookie deletion, VPNs, and browser updates.' },
             ].map((pkg) => (
               <div key={pkg.name} style={{ background: '#111827', padding: '1.75rem 1.5rem' }}>
                 <GlitchText as="span" className={`chip ${pkg.chip}`} trigger="hover" effects={['rgbSplit']}>{pkg.name}</GlitchText>
@@ -72,21 +76,22 @@ export default async function Home() {
               <span className="chip chip-blue">Blindspot</span>
               <h2>Privacy-first OTel browser observability</h2>
               <p className="tagline">
-                Every navigation, click, form submission, and fetch call becomes an OpenTelemetry span —
+                Every navigation, click, form submission, and fetch call becomes an OpenTelemetry span -
                 without capturing IP addresses, user agents, or any other PII. Drop it into your existing
                 OTel pipeline; it speaks OTLP natively.
               </p>
               <ul className="features">
                 <li>Automatic route instrumentation for React Router, Vue Router, and Next.js App Router</li>
                 <li>Web vitals (LCP, CLS, FID) as first-class span attributes</li>
-                <li>Behavioral signals: time-to-first-interaction, paste ratio, mouse entropy, interaction rate — bot detection without a separate SDK</li>
+                <li>Behavioral signals: time-to-first-interaction, paste ratio, mouse entropy, interaction rate - bot detection without a separate SDK</li>
                 <li><code>useSpan</code> / <code>useBlindspot</code> hooks for manual instrumentation</li>
-                <li>Consent-gated — pauses collection until <code>grantConsent()</code> is called</li>
+                <li>Consent-gated - pauses collection until <code>grantConsent()</code> is called</li>
                 <li>Composes with Scent: identity context attaches to every span automatically</li>
               </ul>
               <InstallLine command="npm install @tindalabs/blindspot-react" />
               <div className="pkg-links">
-                <a href="https://github.com/tindalabs/blindspot" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="blindspot-github">GitHub ↗</a>
+                <a href="https://github.com/tindalabs/blindspot" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="blindspot-github"><GitHubIcon /> GitHub</a>
+                <a href="https://www.npmjs.com/package/@tindalabs/blindspot-react" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="blindspot-npm"><NpmIcon /> npm</a>
               </div>
             </div>
             <div>
@@ -141,15 +146,26 @@ console.log(result.risk);
 span.setAttributes(result.spanAttributes);
 
 // Or merge into a Scent observation
-const obs = await scent.observe({ extraSignals: result.signals });`} />
+const obs = await scent.observe({ extraSignals: result.signals });
+
+// ── Active protection ──────────────────────────────
+// Block selection, copy, print, and screenshots; watermark.
+const protector = new ContentProtector({
+  targetElement: document.querySelector('#invoice'),
+  preventSelection: true,
+  preventClipboard: true,
+  preventScreenshots: true,
+  enableWatermark: true,
+});
+protector.protect();`} />
             </div>
             <div className="pkg-copy">
               <span className="chip chip-indigo">Shield</span>
               <h2>Tamper detection for hostile browsers</h2>
               <p className="tagline">
                 A single <code>assess()</code> call returns structured risk signals and a calibrated
-                0–1 risk score. Signals are namespaced as <code>shield.*</code> OTel attributes
-                — ready to attach to Blindspot spans or pass into Scent&apos;s risk engine.
+                0-1 risk score. Signals are namespaced as <code>shield.*</code> OTel attributes
+                - ready to attach to Blindspot spans or pass into Scent&apos;s risk engine.
               </p>
               <ul className="features">
                 <li>DevTools detection via debugger-timing Web Worker (Chrome, Firefox, Safari)</li>
@@ -160,7 +176,8 @@ const obs = await scent.observe({ extraSignals: result.signals });`} />
               </ul>
               <InstallLine command="npm install @tindalabs/shield" />
               <div className="pkg-links">
-                <a href="https://github.com/tindalabs/shield" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="shield-github">GitHub ↗</a>
+                <a href="https://github.com/tindalabs/shield" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="shield-github"><GitHubIcon /> GitHub</a>
+                <a href="https://www.npmjs.com/package/@tindalabs/shield" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="shield-npm"><NpmIcon /> npm</a>
               </div>
             </div>
           </div>
@@ -175,14 +192,14 @@ const obs = await scent.observe({ extraSignals: result.signals });`} />
               <span className="chip chip-violet">Scent</span>
               <h2>Probabilistic identity continuity</h2>
               <p className="tagline">
-                Tracks whether a returning visitor is likely the same entity — even after cookie deletion,
+                Tracks whether a returning visitor is likely the same entity - even after cookie deletion,
                 VPN changes, browser updates, or anti-fingerprinting tools. Returns a calibrated
                 confidence score with a signal-level explainability breakdown.
               </p>
               <ul className="features">
-                <li>SimHash + weighted Jaccard matching — no deterministic hashes, no brittle equality checks</li>
+                <li>SimHash + weighted Jaccard matching - no deterministic hashes, no brittle equality checks</li>
                 <li>Drift-tolerant: a browser update or new IP doesn&apos;t break identity continuity</li>
-                <li><code>scent.identify(userId)</code> links anonymous device identity to authenticated accounts — enabling "N accounts, same device" fraud queries</li>
+                <li><code>scent.identify(userId)</code> links anonymous device identity to authenticated accounts - enabling "N accounts, same device" fraud queries</li>
                 <li>Private browsing and storage restriction detection built-in (<code>storage.restricted</code>)</li>
                 <li>Persistence policies (<code>conservative | balanced | aggressive | forensic</code>) as a first-class compliance lever</li>
                 <li>Risk engine: coordinated behavior, storage amnesia, impossible transitions, automation scoring</li>
@@ -190,7 +207,8 @@ const obs = await scent.observe({ extraSignals: result.signals });`} />
               </ul>
               <InstallLine command="npm install @tindalabs/scent-sdk" />
               <div className="pkg-links">
-                <a href="https://github.com/tindalabs/scent" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="scent-github">GitHub ↗</a>
+                <a href="https://github.com/tindalabs/scent" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="scent-github"><GitHubIcon /> GitHub</a>
+                <a href="https://www.npmjs.com/package/@tindalabs/scent-sdk" target="_blank" rel="noreferrer" className="btn btn-ghost" data-blindspot-label="scent-npm"><NpmIcon /> npm</a>
               </div>
             </div>
             <div>
@@ -228,7 +246,7 @@ scent.on('risk_elevated', ({ score, flags }) => {
         <div className="container">
           <h2 style={{ fontSize: '1.5rem', marginBottom: '0.6rem' }}>Why not just use what you have?</h2>
           <p style={{ color: '#94a3b8', marginBottom: '2rem', maxWidth: '600px', lineHeight: 1.6 }}>
-            Each package replaces a tool you might reach for first — and is built differently on purpose.
+            Each package replaces a tool you might reach for first - and is built differently on purpose.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
             {/* Blindspot */}
@@ -236,7 +254,7 @@ scent.on('risk_elevated', ({ score, flags }) => {
               <span className="chip chip-blue" style={{ marginBottom: '0.75rem', display: 'inline-block' }}>Blindspot</span>
               <h3 style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#f8fafc' }}>Why not session replay?</h3>
               <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6 }}>
-                Hotjar, FullStory and RUM tools <strong style={{ color: '#e2e8f0' }}>record the DOM</strong> — snapshots
+                Hotjar, FullStory and RUM tools <strong style={{ color: '#e2e8f0' }}>record the DOM</strong> - snapshots
                 that carry PII and CIPA / wiretapping exposure. Blindspot emits structured OTel spans instead:
                 <em> what happened</em>, not a recording. No DOM capture, no PII, and it drops straight into the
                 OTel pipeline you already run.
@@ -248,8 +266,8 @@ scent.on('risk_elevated', ({ score, flags }) => {
               <h3 style={{ fontSize: '1.05rem', marginBottom: '0.6rem', color: '#f8fafc' }}>Why not <code>disable-devtool</code>?</h3>
               <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6 }}>
                 <code>disable-devtool</code> gives you a boolean and only watches DevTools. Shield returns
-                <strong style={{ color: '#e2e8f0' }}> structured risk signals and a calibrated 0–1 score</strong> across
-                DevTools, automation drivers, headless and extensions — as <code>shield.*</code> OTel attributes you
+                <strong style={{ color: '#e2e8f0' }}> structured risk signals and a calibrated 0-1 score</strong> across
+                DevTools, automation drivers, headless and extensions - as <code>shield.*</code> OTel attributes you
                 compose into a decision, not a blunt block.
               </p>
             </div>
@@ -260,7 +278,7 @@ scent.on('risk_elevated', ({ score, flags }) => {
               <p style={{ color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6 }}>
                 A deterministic hash mints a brand-new visitor the moment one signal changes. In a reproducible
                 benchmark under realistic drift (browser updates, VPNs, anti-fingerprinting), deterministic
-                fingerprints re-identify <strong style={{ color: '#f87171' }}>~45–55%</strong> of returning visitors —
+                fingerprints re-identify <strong style={{ color: '#f87171' }}>~45-55%</strong> of returning visitors -
                 Scent, <strong style={{ color: '#4ade80' }}>100%</strong>, with an explainable confidence score.
                 Self-hostable, MIT.
               </p>
@@ -287,7 +305,7 @@ async function onPageLoad() {
   // 1. Detect environment threats
   const shield = await assess();
 
-  // 2. Resolve identity — shield signals merge into the snapshot
+  // 2. Resolve identity - shield signals merge into the snapshot
   const obs = await scent.observe({ extraSignals: shield.signals });
   await scent.flush();
 

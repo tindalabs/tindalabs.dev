@@ -14,7 +14,7 @@ import {
 
 // ── Client-side Scent demo ──────────────────────────────────────────────────
 // The hosted demo has no backend. Scent collects this browser's signals and
-// scores them against a baseline saved in localStorage on a previous visit —
+// scores them against a baseline saved in localStorage on a previous visit -
 // using the SAME weighted-Jaccard engine the server runs (@tindalabs/scent-engine),
 // just in the browser. That's enough to demonstrate the core claim (continuity
 // across drift). Server-only features (cross-device resurrection, account
@@ -113,6 +113,28 @@ const WATERMARK_OPTS = {
   style: { color: 'rgba(255,255,255,0.9)' },
 };
 
+// Brand the protection overlays in Tindalabs indigo instead of Shield's default
+// alarm-red. The strategy applies overlayOptions as a shallow replace (not a
+// merge), so we must restate Shield's default text + duration here — otherwise
+// the overlay loses its message and never auto-dismisses. We only swap the color.
+const BRAND_BG = 'rgba(79, 70, 229, 0.92)';
+
+const DEVTOOLS_OVERLAY = {
+  title: 'Developer Tools Detected',
+  message: 'For security reasons, this content is not available while developer tools are open.',
+  secondaryMessage: 'Please close developer tools to continue viewing this content.',
+  textColor: 'white',
+  backgroundColor: BRAND_BG,
+};
+
+const SCREENSHOT_OVERLAY = {
+  title: 'SCREENSHOT PROTECTED',
+  textColor: 'white',
+  backgroundColor: BRAND_BG,
+  fontSize: '48px',
+  duration: 1000,
+};
+
 const DEFAULT_STRATEGIES: Strategies = {
   preventSelection:         true,
   preventContextMenu:       true,
@@ -146,7 +168,7 @@ export default function LiveStack() {
   const [matchedIndexes,   setMatchedIndexes]   = useState<Set<number>>(new Set());
   const [activeStrategies, setActiveStrategies] = useState<string[]>([]);
 
-  // Account linking state — local-only in the hosted demo (see linkIdentity).
+  // Account linking state - local-only in the hosted demo (see linkIdentity).
   const [linkStatus,      setLinkStatus]      = useState<LinkStatus>('idle');
   const [localLinkCount,  setLocalLinkCount]  = useState(0);
   const [linkError,       setLinkError]       = useState<string | null>(null);
@@ -175,7 +197,7 @@ export default function LiveStack() {
 
   function generateTrace() {
     const tracer = getTracer();
-    // Create a real Blindspot span tree for this interaction — the SDK emits
+    // Create a real Blindspot span tree for this interaction - the SDK emits
     // these exactly as in production; here we capture them for the in-page trace
     // view instead of shipping to a collector. recordEvent() attaches a custom
     // event to the active route span, same as it would in your app.
@@ -199,7 +221,7 @@ export default function LiveStack() {
     setActiveStrategies([]);
     policyRef.current?.dispose();
     policyRef.current = null;
-    // Dispose any active manual protector for the same reason — overlapping
+    // Dispose any active manual protector for the same reason - overlapping
     // enableWatermark observers on body + child div cause a MutationObserver loop.
     if (protectorRef.current) {
       protectorRef.current.dispose();
@@ -223,11 +245,8 @@ export default function LiveStack() {
         },
       });
       setPolicyResult(result);
-      if (result.protector) {
-        policyRef.current = result.protector as InstanceType<typeof ContentProtector>;
-      }
 
-      // Reconstruct which rules matched for highlighting
+      // Reconstruct which rules matched (for highlighting + to pin the protector).
       const score   = result.assessment.risk.score;
       const signals = result.assessment.signals;
       const matched = new Set<number>();
@@ -243,6 +262,30 @@ export default function LiveStack() {
         }
         if (ok) { matched.add(i); rule.enable.forEach(s => strategies.push(s)); }
       });
+
+      if (result.protector) {
+        policyRef.current = result.protector as InstanceType<typeof ContentProtector>;
+        // assessAndProtect only flips the *matched* strategies on; ContentProtector
+        // defaults the rest (e.g. preventScreenshots) to ON, so the policy protector
+        // would activate protections — and their red overlays — no policy requested.
+        // Pin it to exactly the matched set, and brand any overlay it does show.
+        const on = (k: string) => strategies.includes(k);
+        result.protector.updateOptions({
+          preventSelection:         on('preventSelection'),
+          preventClipboard:         on('preventClipboard'),
+          preventContextMenu:       on('preventContextMenu'),
+          preventKeyboardShortcuts: on('preventKeyboardShortcuts'),
+          preventPrinting:          on('preventPrinting'),
+          preventScreenshots:       on('preventScreenshots'),
+          preventDevTools:          on('preventDevTools'),
+          preventExtensions:        on('preventExtensions'),
+          enableWatermark:          on('enableWatermark'),
+          watermarkOptions:         on('enableWatermark') ? { text: `RISK-${Math.round(score * 100)}`, opacity: 0.15 } : undefined,
+          devToolsOptions:   { overlayOptions: DEVTOOLS_OVERLAY },
+          screenshotOptions: { overlayOptions: SCREENSHOT_OVERLAY },
+        });
+      }
+
       setMatchedIndexes(matched);
       setActiveStrategies([...new Set(strategies)]);
       setPolicyStatus('done');
@@ -262,7 +305,7 @@ export default function LiveStack() {
   useEffect(() => () => { protectorRef.current?.dispose(); }, []);
 
   const handlers = {
-    onDevToolsOpen:            (open: boolean) => { setDevToolsOpen(open); setLastEvent(open ? 'DevTools opened — overlay shown' : 'DevTools closed'); },
+    onDevToolsOpen:            (open: boolean) => { setDevToolsOpen(open); setLastEvent(open ? 'DevTools opened - overlay shown' : 'DevTools closed'); },
     onSelectionAttempt:        ()              => setLastEvent('Text selection blocked'),
     onContextMenuAttempt:      ()              => setLastEvent('Context menu blocked'),
     onPrintAttempt:            ()              => setLastEvent('Print attempt blocked'),
@@ -317,15 +360,17 @@ export default function LiveStack() {
   function buildOptions(s: Strategies) {
     return {
       ...s,
-      targetElement:    contentRef.current!,
-      watermarkOptions: s.enableWatermark ? WATERMARK_OPTS : undefined,
-      customHandlers:   handlers,
+      targetElement:     contentRef.current!,
+      watermarkOptions:  s.enableWatermark ? WATERMARK_OPTS : undefined,
+      devToolsOptions:   { overlayOptions: DEVTOOLS_OVERLAY },
+      screenshotOptions: { overlayOptions: SCREENSHOT_OVERLAY },
+      customHandlers:    handlers,
     };
   }
 
   function enableProtection() {
     if (!contentRef.current || protectorRef.current) return;
-    // Dispose any active policy-engine protector first — two simultaneous
+    // Dispose any active policy-engine protector first - two simultaneous
     // ContentProtectors with enableWatermark trigger a MutationObserver loop.
     if (policyRef.current) {
       policyRef.current.dispose();
@@ -355,11 +400,13 @@ export default function LiveStack() {
   function toggleStrategy(key: keyof Strategies) {
     const next = { ...strategies, [key]: !strategies[key] };
     setStrategies(next);
-    // Live-update the active protector — it re-initialises only the changed strategy.
+    // Live-update the active protector - it re-initialises only the changed strategy.
     if (protectorRef.current) {
       protectorRef.current.updateOptions({
         ...next,
-        watermarkOptions: next.enableWatermark ? WATERMARK_OPTS : undefined,
+        watermarkOptions:  next.enableWatermark ? WATERMARK_OPTS : undefined,
+        devToolsOptions:   { overlayOptions: DEVTOOLS_OVERLAY },
+        screenshotOptions: { overlayOptions: SCREENSHOT_OVERLAY },
         customHandlers: handlers,
       });
     }
@@ -454,7 +501,7 @@ export default function LiveStack() {
                   fontSize: '0.68rem', color: '#475569', fontFamily: 'monospace',
                   lineHeight: 1.65, margin: 0, background: 'transparent', whiteSpace: 'pre-wrap',
                 }}>
-                  {`init({ persistence: 'balanced' })\n// 'aggressive'   — all storage APIs, max cross-session recall\n// 'conservative' — session memory only, no persistence`}
+                  {`init({ persistence: 'balanced' })\n// 'aggressive'   - all storage APIs, max cross-session recall\n// 'conservative' - session memory only, no persistence`}
                 </pre>
               </div>
             </>
@@ -516,7 +563,7 @@ export default function LiveStack() {
               </div>
             )}
             <p style={{ color: '#475569', fontSize: '0.72rem', fontStyle: 'italic', marginTop: '0.25rem' }}>
-              Repeated calls are idempotent and increment a server-side counter — try clicking again.
+              Repeated calls are idempotent and increment a server-side counter - try clicking again.
             </p>
           </div>
         )}
@@ -595,7 +642,7 @@ export default function LiveStack() {
                         {devToolsOpen ? 'Open' : 'Clear'}
                       </span>
                     )}
-                    {/* Extension detection badge — shown when assess() found an extension */}
+                    {/* Extension detection badge - shown when assess() found an extension */}
                     {isExtensions && extensionDetected && (
                       <span style={{ padding: '0.1rem 0.45rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 500, background: '#2c1010', color: '#f87171' }}>
                         detected
@@ -622,7 +669,7 @@ export default function LiveStack() {
             {/* DevTools status when protection is off but assess() ran */}
             {!protectionOn && devToolsOpen !== null && (
               <div style={{ borderTop: '1px solid #1e2d40', paddingTop: '0.5rem', marginTop: '0.25rem', fontSize: '0.72rem', color: '#475569', fontStyle: 'italic' }}>
-                DevTools last seen: {devToolsOpen ? 'Open' : 'Closed'} — enable protection for real-time monitoring.
+                DevTools last seen: {devToolsOpen ? 'Open' : 'Closed'} - enable protection for real-time monitoring.
               </div>
             )}
           </div>
@@ -681,7 +728,7 @@ export default function LiveStack() {
         {/* Result */}
         {policyStatus === 'idle' && (
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            {shield ? 'Reuses the assess() result above — no extra network call.' : 'Click Run to assess and apply policies.'}
+            {shield ? 'Reuses the assess() result above - no extra network call.' : 'Click Run to assess and apply policies.'}
           </p>
         )}
         {policyResult && (
@@ -734,7 +781,7 @@ export default function LiveStack() {
         </div>
 
         <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
-          Blindspot emits an OTel span for every navigation, click and fetch — correlated by W3C{' '}
+          Blindspot emits an OTel span for every navigation, click and fetch - correlated by W3C{' '}
           <code style={{ color: '#94a3b8' }}>traceparent</code>, no PII. They render in-page here; in
           production they ship to your collector (Tempo / Grafana).{' '}
           <code style={{ color: '#94a3b8' }}>recordEvent()</code> attaches a custom event to the active route span.
@@ -772,7 +819,7 @@ export default function LiveStack() {
               </div>
             ))}
             <p style={{ color: '#475569', fontSize: '0.72rem', fontStyle: 'italic', marginTop: '0.25rem' }}>
-              A real Blindspot trace for this interaction — {spans.length} spans, generated in your browser. Custom event{' '}
+              A real Blindspot trace for this interaction - {spans.length} spans, generated in your browser. Custom event{' '}
               <code style={{ color: '#94a3b8' }}>demo.content.viewed</code> attached to the route span ({eventCount}× this session).
             </p>
           </div>
