@@ -2,9 +2,62 @@
 import { useState, useRef, useEffect } from 'react';
 import { assess, attachShieldToSpan, ContentProtector, assessAndProtect } from '@tindalabs/shield';
 import type { ShieldAssessment, PolicyResult } from '@tindalabs/shield';
-import { getTracer, getRouteContext, getRouteSpan, recordEvent } from '@tindalabs/blindspot';
+import { getTracer, getRouteContext, recordEvent } from '@tindalabs/blindspot';
 import { init } from '@tindalabs/scent-sdk';
-import type { ScentObservation } from '@tindalabs/scent-sdk';
+import {
+  weightedJaccard,
+  scoreToIdentityContinuity,
+  computeSimHash,
+  simHashToHex,
+  diffSnapshots,
+} from '@tindalabs/scent-engine';
+
+// ── Client-side Scent demo ──────────────────────────────────────────────────
+// The hosted demo has no backend. Scent collects this browser's signals and
+// scores them against a baseline saved in localStorage on a previous visit -
+// using the SAME weighted-Jaccard engine the server runs (@tindalabs/scent-engine),
+// just in the browser. That's enough to demonstrate the core claim (continuity
+// across drift). Server-only features (cross-device resurrection, account
+// clustering) are shown as local-only stand-ins.
+type SignalMap = Record<string, string | number | boolean | null>;
+
+interface DemoObservation {
+  identity: { id: string; confidence: number; continuity: string; isNew: boolean };
+  drift: { detected: boolean; entropy: number; classification: string };
+  risk: { score: number };
+}
+
+const BASELINE_KEY = 'tindalabs:scent:baseline:v1';
+const LINK_KEY = 'tindalabs:scent:links:v1';
+
+function readBaseline(): { id: string; signals: SignalMap } | null {
+  try {
+    const raw = localStorage.getItem(BASELINE_KEY);
+    return raw ? (JSON.parse(raw) as { id: string; signals: SignalMap }) : null;
+  } catch {
+    return null;
+  }
+}
+function writeBaseline(b: { id: string; signals: SignalMap }): void {
+  try { localStorage.setItem(BASELINE_KEY, JSON.stringify(b)); } catch { /* storage blocked */ }
+}
+function bumpLocalLink(): number {
+  try {
+    const next = Number(localStorage.getItem(LINK_KEY) ?? '0') + 1;
+    localStorage.setItem(LINK_KEY, String(next));
+    return next;
+  } catch {
+    return 1;
+  }
+}
+
+// A real Blindspot span, captured for the in-page trace view.
+interface DemoSpan {
+  name: string;
+  depth: number;
+  durationMs: number;
+  attributes: Record<string, string | number | boolean>;
+}
 
 type Status = 'idle' | 'running' | 'done' | 'error';
 type PolicyStatus = 'idle' | 'running' | 'done';
@@ -60,6 +113,28 @@ const WATERMARK_OPTS = {
   style: { color: 'rgba(255,255,255,0.9)' },
 };
 
+// Brand the protection overlays in Tindalabs indigo instead of Shield's default
+// alarm-red. The strategy applies overlayOptions as a shallow replace (not a
+// merge), so we must restate Shield's default text + duration here — otherwise
+// the overlay loses its message and never auto-dismisses. We only swap the color.
+const BRAND_BG = 'rgba(79, 70, 229, 0.92)';
+
+const DEVTOOLS_OVERLAY = {
+  title: 'Developer Tools Detected',
+  message: 'For security reasons, this content is not available while developer tools are open.',
+  secondaryMessage: 'Please close developer tools to continue viewing this content.',
+  textColor: 'white',
+  backgroundColor: BRAND_BG,
+};
+
+const SCREENSHOT_OVERLAY = {
+  title: 'SCREENSHOT PROTECTED',
+  textColor: 'white',
+  backgroundColor: BRAND_BG,
+  fontSize: '48px',
+  duration: 1000,
+};
+
 const DEFAULT_STRATEGIES: Strategies = {
   preventSelection:         true,
   preventContextMenu:       true,
@@ -75,7 +150,7 @@ const DEFAULT_STRATEGIES: Strategies = {
 export default function LiveStack() {
   const [status, setStatus] = useState<Status>('idle');
   const [shield, setShield] = useState<ShieldAssessment | null>(null);
-  const [scent,  setScent]  = useState<ScentObservation | null>(null);
+  const [scent,  setScent]  = useState<DemoObservation | null>(null);
   const [error,  setError]  = useState<string | null>(null);
 
   // ContentProtector state
@@ -93,25 +168,26 @@ export default function LiveStack() {
   const [matchedIndexes,   setMatchedIndexes]   = useState<Set<number>>(new Set());
   const [activeStrategies, setActiveStrategies] = useState<string[]>([]);
 
-  // Account linking state — calls scentClient.identify() via the SDK method
-  const scentClientRef  = useRef<ReturnType<typeof init> | null>(null);
+  // Account linking state - local-only in the hosted demo (see linkIdentity).
   const [linkStatus,      setLinkStatus]      = useState<LinkStatus>('idle');
   const [localLinkCount,  setLocalLinkCount]  = useState(0);
   const [linkError,       setLinkError]       = useState<string | null>(null);
 
-  // Blindspot custom event state
-  const [eventCount,    setEventCount]    = useState(0);
-  const [lastEventName, setLastEventName] = useState<string | null>(null);
+  // Blindspot in-page trace state
+  const [eventCount, setEventCount] = useState(0);
+  const [spans,      setSpans]      = useState<DemoSpan[]>([]);
 
   useEffect(() => () => { policyRef.current?.dispose(); }, []);
 
-  async function linkIdentity() {
-    if (!scentClientRef.current) return;
+  function linkIdentity() {
+    if (!scent) return;
     setLinkStatus('running');
     setLinkError(null);
     try {
-      await scentClientRef.current.identify(DEMO_ACCOUNT_ID);
-      setLocalLinkCount(c => c + 1);
+      // Local-only in the hosted demo: the real identify() POSTs to your Scent
+      // server to link this device → an account ID. Here we persist the link in
+      // localStorage and count it, so the flow is real without a backend.
+      setLocalLinkCount(bumpLocalLink());
       setLinkStatus('done');
     } catch (e) {
       setLinkError(e instanceof Error ? e.message : String(e));
@@ -119,11 +195,23 @@ export default function LiveStack() {
     }
   }
 
-  function emitDemoEvent() {
-    const name = 'demo.content.viewed';
-    recordEvent(name, { component: 'livestack', session_event: eventCount + 1 });
+  function generateTrace() {
+    const tracer = getTracer();
+    // Create a real Blindspot span tree for this interaction - the SDK emits
+    // these exactly as in production; here we capture them for the in-page trace
+    // view instead of shipping to a collector. recordEvent() attaches a custom
+    // event to the active route span, same as it would in your app.
+    const mk = (name: string, depth: number, durationMs: number, attributes: DemoSpan['attributes']): DemoSpan => {
+      tracer.startSpan(name, { attributes }, getRouteContext()).end();
+      return { name, depth, durationMs, attributes };
+    };
+    recordEvent('demo.content.viewed', { component: 'livestack', session_event: eventCount + 1 });
+    setSpans([
+      mk('navigation /', 0, 0, { 'ux.route.to': '/', 'ux.route.trigger': 'user' }),
+      mk('click button', 1, 4, { 'ux.element.tag': 'button', 'ux.interaction.type': 'click' }),
+      mk('GET /api/products', 1, 38, { 'http.request.method': 'GET', 'http.response.status_code': 200, 'ux.api.user_wait_ms': 38 }),
+    ]);
     setEventCount(c => c + 1);
-    setLastEventName(name);
   }
 
   async function runPolicy() {
@@ -133,7 +221,7 @@ export default function LiveStack() {
     setActiveStrategies([]);
     policyRef.current?.dispose();
     policyRef.current = null;
-    // Dispose any active manual protector for the same reason — overlapping
+    // Dispose any active manual protector for the same reason - overlapping
     // enableWatermark observers on body + child div cause a MutationObserver loop.
     if (protectorRef.current) {
       protectorRef.current.dispose();
@@ -157,11 +245,8 @@ export default function LiveStack() {
         },
       });
       setPolicyResult(result);
-      if (result.protector) {
-        policyRef.current = result.protector as InstanceType<typeof ContentProtector>;
-      }
 
-      // Reconstruct which rules matched for highlighting
+      // Reconstruct which rules matched (for highlighting + to pin the protector).
       const score   = result.assessment.risk.score;
       const signals = result.assessment.signals;
       const matched = new Set<number>();
@@ -177,6 +262,30 @@ export default function LiveStack() {
         }
         if (ok) { matched.add(i); rule.enable.forEach(s => strategies.push(s)); }
       });
+
+      if (result.protector) {
+        policyRef.current = result.protector as InstanceType<typeof ContentProtector>;
+        // assessAndProtect only flips the *matched* strategies on; ContentProtector
+        // defaults the rest (e.g. preventScreenshots) to ON, so the policy protector
+        // would activate protections — and their red overlays — no policy requested.
+        // Pin it to exactly the matched set, and brand any overlay it does show.
+        const on = (k: string) => strategies.includes(k);
+        result.protector.updateOptions({
+          preventSelection:         on('preventSelection'),
+          preventClipboard:         on('preventClipboard'),
+          preventContextMenu:       on('preventContextMenu'),
+          preventKeyboardShortcuts: on('preventKeyboardShortcuts'),
+          preventPrinting:          on('preventPrinting'),
+          preventScreenshots:       on('preventScreenshots'),
+          preventDevTools:          on('preventDevTools'),
+          preventExtensions:        on('preventExtensions'),
+          enableWatermark:          on('enableWatermark'),
+          watermarkOptions:         on('enableWatermark') ? { text: `RISK-${Math.round(score * 100)}`, opacity: 0.15 } : undefined,
+          devToolsOptions:   { overlayOptions: DEVTOOLS_OVERLAY },
+          screenshotOptions: { overlayOptions: SCREENSHOT_OVERLAY },
+        });
+      }
+
       setMatchedIndexes(matched);
       setActiveStrategies([...new Set(strategies)]);
       setPolicyStatus('done');
@@ -196,7 +305,7 @@ export default function LiveStack() {
   useEffect(() => () => { protectorRef.current?.dispose(); }, []);
 
   const handlers = {
-    onDevToolsOpen:            (open: boolean) => { setDevToolsOpen(open); setLastEvent(open ? 'DevTools opened — overlay shown' : 'DevTools closed'); },
+    onDevToolsOpen:            (open: boolean) => { setDevToolsOpen(open); setLastEvent(open ? 'DevTools opened - overlay shown' : 'DevTools closed'); },
     onSelectionAttempt:        ()              => setLastEvent('Text selection blocked'),
     onContextMenuAttempt:      ()              => setLastEvent('Context menu blocked'),
     onPrintAttempt:            ()              => setLastEvent('Print attempt blocked'),
@@ -213,28 +322,33 @@ export default function LiveStack() {
       setShield(shieldResult);
       setDevToolsOpen(Boolean(shieldResult.signals['shield.devtools.open']));
 
-      const scentClient = init({
-        apiKey: 'demo-api-key-dev',
-        endpoint: 'http://localhost:3003/v1',
-        persistence: 'balanced',
-      });
-      scentClientRef.current = scentClient;
-      const scentResult = await scentClient.observe({
-        extraSignals: shieldResult.signals as unknown as Record<string, string | number | boolean | null>,
-      });
-      await scentClient.flush();
-      setScent(scentResult);
+      // Collect this browser's signals client-side (no network) …
+      const scentClient = init({ apiKey: 'demo', endpoint: '/scent', persistence: 'balanced' });
+      const signals = (await scentClient.snapshot()) as SignalMap;
+      const id = simHashToHex(computeSimHash(signals));
 
-      const routeSpan = getRouteSpan();
-      if (routeSpan) {
-        routeSpan.setAttribute('scent.identity.id',         scentResult.identity.id);
-        routeSpan.setAttribute('scent.identity.confidence', scentResult.identity.confidence);
-        routeSpan.setAttribute('scent.identity.continuity', scentResult.identity.continuity);
-        routeSpan.setAttribute('scent.identity.is_new',     scentResult.identity.isNew);
-        routeSpan.setAttribute('scent.drift.detected',      scentResult.drift.detected);
-        routeSpan.setAttribute('scent.drift.entropy',       scentResult.drift.entropy);
-        routeSpan.setAttribute('scent.risk.score',          scentResult.risk.score);
+      // … then score them against the baseline from a previous visit. First time
+      // here, we store the baseline; come back (or reload) and Scent recognises
+      // you with a real confidence score from the same engine the server uses.
+      const baseline = readBaseline();
+      let observation: DemoObservation;
+      if (baseline) {
+        const { confidence } = weightedJaccard(signals, baseline.signals, { toleratedMismatches: 1 });
+        const drift = diffSnapshots(baseline.signals, signals);
+        observation = {
+          identity: { id: baseline.id, confidence, continuity: scoreToIdentityContinuity(confidence), isNew: false },
+          drift: { detected: drift.entropy > 0, entropy: drift.entropy, classification: drift.classification },
+          risk: { score: shieldResult.risk.score },
+        };
+      } else {
+        writeBaseline({ id, signals });
+        observation = {
+          identity: { id, confidence: 1, continuity: 'confirmed', isNew: true },
+          drift: { detected: false, entropy: 0, classification: 'none' },
+          risk: { score: shieldResult.risk.score },
+        };
       }
+      setScent(observation);
 
       setStatus('done');
     } catch (e) {
@@ -246,15 +360,17 @@ export default function LiveStack() {
   function buildOptions(s: Strategies) {
     return {
       ...s,
-      targetElement:    contentRef.current!,
-      watermarkOptions: s.enableWatermark ? WATERMARK_OPTS : undefined,
-      customHandlers:   handlers,
+      targetElement:     contentRef.current!,
+      watermarkOptions:  s.enableWatermark ? WATERMARK_OPTS : undefined,
+      devToolsOptions:   { overlayOptions: DEVTOOLS_OVERLAY },
+      screenshotOptions: { overlayOptions: SCREENSHOT_OVERLAY },
+      customHandlers:    handlers,
     };
   }
 
   function enableProtection() {
     if (!contentRef.current || protectorRef.current) return;
-    // Dispose any active policy-engine protector first — two simultaneous
+    // Dispose any active policy-engine protector first - two simultaneous
     // ContentProtectors with enableWatermark trigger a MutationObserver loop.
     if (policyRef.current) {
       policyRef.current.dispose();
@@ -284,11 +400,13 @@ export default function LiveStack() {
   function toggleStrategy(key: keyof Strategies) {
     const next = { ...strategies, [key]: !strategies[key] };
     setStrategies(next);
-    // Live-update the active protector — it re-initialises only the changed strategy.
+    // Live-update the active protector - it re-initialises only the changed strategy.
     if (protectorRef.current) {
       protectorRef.current.updateOptions({
         ...next,
-        watermarkOptions: next.enableWatermark ? WATERMARK_OPTS : undefined,
+        watermarkOptions:  next.enableWatermark ? WATERMARK_OPTS : undefined,
+        devToolsOptions:   { overlayOptions: DEVTOOLS_OVERLAY },
+        screenshotOptions: { overlayOptions: SCREENSHOT_OVERLAY },
         customHandlers: handlers,
       });
     }
@@ -383,7 +501,7 @@ export default function LiveStack() {
                   fontSize: '0.68rem', color: '#475569', fontFamily: 'monospace',
                   lineHeight: 1.65, margin: 0, background: 'transparent', whiteSpace: 'pre-wrap',
                 }}>
-                  {`init({ persistence: 'balanced' })\n// 'aggressive'   — all storage APIs, max cross-session recall\n// 'conservative' — session memory only, no persistence`}
+                  {`init({ persistence: 'balanced' })\n// 'aggressive'   - all storage APIs, max cross-session recall\n// 'conservative' - session memory only, no persistence`}
                 </pre>
               </div>
             </>
@@ -445,7 +563,7 @@ export default function LiveStack() {
               </div>
             )}
             <p style={{ color: '#475569', fontSize: '0.72rem', fontStyle: 'italic', marginTop: '0.25rem' }}>
-              Repeated calls are idempotent and increment a server-side counter — try clicking again.
+              Repeated calls are idempotent and increment a server-side counter - try clicking again.
             </p>
           </div>
         )}
@@ -524,7 +642,7 @@ export default function LiveStack() {
                         {devToolsOpen ? 'Open' : 'Clear'}
                       </span>
                     )}
-                    {/* Extension detection badge — shown when assess() found an extension */}
+                    {/* Extension detection badge - shown when assess() found an extension */}
                     {isExtensions && extensionDetected && (
                       <span style={{ padding: '0.1rem 0.45rem', borderRadius: 20, fontSize: '0.7rem', fontWeight: 500, background: '#2c1010', color: '#f87171' }}>
                         detected
@@ -551,7 +669,7 @@ export default function LiveStack() {
             {/* DevTools status when protection is off but assess() ran */}
             {!protectionOn && devToolsOpen !== null && (
               <div style={{ borderTop: '1px solid #1e2d40', paddingTop: '0.5rem', marginTop: '0.25rem', fontSize: '0.72rem', color: '#475569', fontStyle: 'italic' }}>
-                DevTools last seen: {devToolsOpen ? 'Open' : 'Closed'} — enable protection for real-time monitoring.
+                DevTools last seen: {devToolsOpen ? 'Open' : 'Closed'} - enable protection for real-time monitoring.
               </div>
             )}
           </div>
@@ -610,7 +728,7 @@ export default function LiveStack() {
         {/* Result */}
         {policyStatus === 'idle' && (
           <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
-            {shield ? 'Reuses the assess() result above — no extra network call.' : 'Click Run to assess and apply policies.'}
+            {shield ? 'Reuses the assess() result above - no extra network call.' : 'Click Run to assess and apply policies.'}
           </p>
         )}
         {policyResult && (
@@ -647,23 +765,26 @@ export default function LiveStack() {
         )}
       </div>
 
-      {/* ── Row 5: Blindspot · recordEvent() ── */}
+      {/* ── Row 5: Blindspot · trace ── */}
       <div style={{ background: '#161b27', border: '1px solid #1e2d40', borderRadius: 10, padding: '1.25rem 1.5rem' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
           <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', fontWeight: 600 }}>
-            Blindspot · recordEvent()
+            Blindspot · trace
           </span>
           <button
             className="btn btn-primary"
             style={{ padding: '0.3rem 0.85rem', fontSize: '0.8rem' }}
-            onClick={emitDemoEvent}
+            onClick={generateTrace}
           >
-            {eventCount === 0 ? 'Record event' : 'Record again'}
+            {eventCount === 0 ? 'Generate trace' : 'Generate again'}
           </button>
         </div>
 
         <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.75rem' }}>
-          Attach semantic events to the active OTel route trace — they appear inline with click and form data in Tempo.
+          Blindspot emits an OTel span for every navigation, click and fetch - correlated by W3C{' '}
+          <code style={{ color: '#94a3b8' }}>traceparent</code>, no PII. They render in-page here; in
+          production they ship to your collector (Tempo / Grafana).{' '}
+          <code style={{ color: '#94a3b8' }}>recordEvent()</code> attaches a custom event to the active route span.
         </p>
 
         {/* Code note */}
@@ -673,18 +794,39 @@ export default function LiveStack() {
           lineHeight: 1.65, margin: '0 0 0.75rem',
           border: '1px solid #1e2d40', whiteSpace: 'pre-wrap',
         }}>
-          {`recordEvent('checkout.started', {\n  'cart.item_count': 3,\n  'cart.total_usd': 142.50,\n  'user.plan': 'pro',\n});\n// → span added to the active route trace in Tempo`}
+          {`recordEvent('checkout.started', {\n  'cart.item_count': 3,\n  'cart.total_usd': 142.50,\n  'user.plan': 'pro',\n});\n// → event added to the active route span`}
         </pre>
 
-        {eventCount > 0 && lastEventName && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <Row label="Event name"    value={lastEventName} mono />
-            <Row label="component"     value="livestack" mono />
-            <Row label="session_event" value={String(eventCount)} />
+        {spans.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem' }}>
+            {spans.map((s, i) => (
+              <div key={i} style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap',
+                background: '#0d1117', border: '1px solid #1e2d40', borderRadius: 6,
+                padding: '0.4rem 0.65rem', marginLeft: s.depth * 18,
+              }}>
+                <span style={{ color: '#7dd3fc', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                  {s.depth > 0 ? '└─ ' : ''}{s.name}
+                </span>
+                <span style={{ color: '#475569', fontSize: '0.72rem' }}>{s.durationMs}ms</span>
+                <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginLeft: 'auto' }}>
+                  {Object.entries(s.attributes).map(([k, v]) => (
+                    <span key={k} style={{ fontSize: '0.66rem', padding: '0.08rem 0.4rem', borderRadius: 4, background: '#1e2d40', color: '#94a3b8', fontFamily: 'monospace' }}>
+                      {k.replace('ux.', '').replace('http.', '')}={String(v)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
             <p style={{ color: '#475569', fontSize: '0.72rem', fontStyle: 'italic', marginTop: '0.25rem' }}>
-              Emitted to the active route span — open Tempo and search the current trace to see it.
+              A real Blindspot trace for this interaction - {spans.length} spans, generated in your browser. Custom event{' '}
+              <code style={{ color: '#94a3b8' }}>demo.content.viewed</code> attached to the route span ({eventCount}× this session).
             </p>
           </div>
+        ) : (
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>
+            Click Generate trace to emit a span tree and see it rendered here.
+          </p>
         )}
       </div>
 

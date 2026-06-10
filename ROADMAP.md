@@ -8,40 +8,40 @@ The marketing landing page and unified observability stack for [tindalabs.dev](h
 
 ### 1. Production Deployment
 
-**Priority**: Critical | **Effort**: 1–2 hours | **Status**: To do
+**Priority**: Critical | **Effort**: 1–2 hours | **Status**: Done ✅
 
-The Next.js app has no deployment configuration. The site cannot go live without this.
+Shipped as a **static export to GitHub Pages** (free, $0, no backend, no abuse surface) rather than Vercel/Fly — the site is fully client-rendered, so static is the right fit.
 
 #### Tasks
-- [ ] Add `vercel.json` (or equivalent Fly/Railway manifest) and configure the project on the target platform
-- [ ] Document the production deploy path in README
-- [ ] Add `.github/workflows/ci.yml` with `npm run build` as the minimum CI gate
+- [x] `next.config.ts` → `output: 'export'` (+ `images.unoptimized`); removed the dev-only `rewrites()`
+- [x] `.github/workflows/deploy-pages.yml` — build + publish `out/` to Pages on every push to `main`
+- [x] Custom domain via `public/CNAME` (`tindalabs.dev`) + `public/.nojekyll`; deploy path documented in README
+- [ ] One-time: point `tindalabs.dev` DNS at GitHub Pages and set the custom domain under Settings → Pages
 
 ---
 
-### 2. Hosted Demo Endpoint
+### 2. Hosted Demo Endpoint — OBVIATED
 
-**Priority**: High | **Effort**: 2–4 hours | **Status**: To do
+**Priority**: ~~High~~ | **Status**: Resolved by going client-side ✅
 
-The LiveStack panel requires a local scent-server at `localhost:3003`. Every public visitor hits a silent error state. A hosted read-only demo instance removes the 4-step local setup requirement entirely.
+Originally the LiveStack panel POSTed to a scent-server at `localhost:3003`, so every public visitor hit a silent error. Rather than host (and harden, rate-limit, and pay for) a public scent-server, the demo now runs **fully in the browser**: Scent collects signals with `snapshot()` and scores them against a `localStorage` baseline using `@tindalabs/scent-engine`; Blindspot renders its spans in-page; Shield was already client-side. No endpoint to stand up, no abuse/privacy surface, no broken-demo risk.
 
 #### Tasks
-- [ ] Stand up a shared demo scent-server instance (Railway or Fly.io — small Postgres + Redis)
-- [ ] Point `LiveStack.tsx` at the hosted endpoint by default, with `localhost:3003` as fallback for local dev
-- [ ] Add a graceful fallback UI in `LiveStack.tsx` when scent-server is unreachable (show Shield result; explain Scent needs a server)
+- [x] Rework `LiveStack.tsx` Scent path to score client-side against a localStorage baseline (real confidence on reload)
+- [x] `identify()` → local-only stand-in (localStorage link counter); copy explains the server-backed version
+- [x] Blindspot Row → in-page trace tree built from real `getTracer()` spans (no collector)
+- [ ] *(deferred)* If server-only features (resurrection / account clustering) ever need a live demo, stand up a minimal, API-keyed, rate-limited scent-server on Fly/Railway — **not** the full stack, and never Grafana/Tempo publicly
 
 ---
 
 ### 3. npm Package Transition
 
-**Priority**: High | **Effort**: 30 minutes | **Status**: To do
-
-`next.config.ts` resolves all `@tindalabs/*` imports from sibling repo paths on disk. This is correct for development but blocks any deployment that doesn't have the sibling repos present. The transition to published npm packages is undocumented.
+**Priority**: High | **Effort**: 30 minutes | **Status**: Done ✅
 
 #### Tasks
-- [ ] Document the transition from disk aliases to npm packages in README
-- [ ] Once packages are published, remove webpack aliases from `next.config.ts` and install from npm
-- [ ] Verify production build passes with npm-sourced packages
+- [x] Added `@tindalabs/*` as npm dependencies (`package.json`); documented in README
+- [x] Removed the disk aliases from `next.config.ts` **and** `tsconfig.json` paths (both were redirecting to sibling source)
+- [x] Verified the production static build passes with npm-sourced packages (worked around a shield dist `@/` self-import — see `next.config.ts`)
 
 ---
 
@@ -67,16 +67,16 @@ Full report: `c-level/reports/tindalabs-dev_2026-05-19.md`
 
 ### Immediate (this week)
 
-- [ ] Deploy tindalabs.dev to a public URL (Vercel recommended — zero-config Next.js 15) — HN launch is gated on this
+- [x] Deploy tindalabs.dev to a public URL ✅ — static export to **GitHub Pages** (see Planned Work #1), not Vercel; the site is fully client-rendered. (DNS cutover is the only manual step left.)
 - [ ] Pin `otel/opentelemetry-collector-contrib`, `grafana/tempo`, `grafana/grafana` to specific versions in `infra/docker-compose.yml` (currently `:latest`; use same versions as scent + blindspot-ux: `0.107.0` / `2.5.0` / `11.2.0`)
 - [ ] Add `LICENSE` file (MIT) to repo root — footer says "MIT License" but no file exists
 - [ ] Add `.github/workflows/ci.yml` with `npm run build` step — broken TypeScript currently passes silently
 
 ### Next Sprint (1–4 weeks)
 
-- [ ] Stand up a hosted scent-server demo endpoint so LiveStack works for all visitors without local setup
-- [ ] Add graceful fallback in `LiveStack.tsx` when scent-server is unreachable
-- [ ] Publish all `@tindalabs/*` packages to npm — `npm install @tindalabs/shield` must work before the HN post
+- [x] ~~Stand up a hosted scent-server demo endpoint~~ ✅ OBVIATED — LiveStack now runs fully client-side (see Planned Work #2); no server to host, so no "silent error state" for visitors
+- [x] ~~Add graceful fallback when scent-server is unreachable~~ ✅ N/A — there is no server dependency anymore
+- [x] Publish all `@tindalabs/*` packages to npm ✅ — all live (blindspot 0.1.1 / blindspot-next 0.1.2 / scent-sdk + scent-engine 0.1.0 / shield 0.1.0); the site now consumes them from npm
 - [ ] Add `SECURITY.md` with maintainer contact and 90-day responsible disclosure path
 - [ ] Add `.github/dependabot.yml` for monthly npm dependency updates
 - [ ] Document the "disk aliases → npm packages" transition in README

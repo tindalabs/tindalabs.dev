@@ -46,7 +46,7 @@ pre {
   line-height: 1.65;
 }
 
-/* Shiki wraps output in <pre> with inline background — override to match site */
+/* Shiki wraps output in <pre> with inline background - override to match site */
 .code-block pre {
   background: #080d16 !important;
   border: 1px solid var(--border);

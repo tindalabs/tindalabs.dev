@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { GitHubIcon, LogoMark } from './icons';
 
 export default function Nav() {
   return (
@@ -10,7 +11,8 @@ export default function Nav() {
       borderBottom: '1px solid #1e2d40',
     }}>
       <div className="container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.5rem' }}>
-        <span style={{ fontWeight: 700, fontSize: '1rem', letterSpacing: '-0.02em', color: '#f8fafc' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '1rem', letterSpacing: '-0.02em', color: '#f8fafc' }}>
+          <LogoMark size={22} />
           Tindalabs
         </span>
         <nav style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
@@ -25,7 +27,7 @@ export default function Nav() {
             style={{ padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
             data-blindspot-label="nav-github"
           >
-            GitHub ↗
+            <GitHubIcon /> GitHub
           </a>
         </nav>
       </div>
