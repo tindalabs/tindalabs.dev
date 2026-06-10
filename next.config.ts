@@ -16,8 +16,14 @@ import path from 'node:path';
 // (see tsconfig paths) is untouched. Remove once shield ships relative imports.
 const shieldDist = path.resolve('node_modules/@tindalabs/shield/dist');
 
+// Served from a GitHub Pages project path (https://tindalabs.github.io/tindalabs.dev/),
+// not a custom domain, so the export needs a basePath to prefix every asset and
+// route. Applied only to the production build so local `next dev` stays at root.
+const basePath = process.env.NODE_ENV === 'production' ? '/tindalabs.dev' : '';
+
 const nextConfig: NextConfig = {
   output: 'export',
+  basePath,
   images: { unoptimized: true },
   webpack(config: Parameters<NonNullable<NextConfig['webpack']>>[0], { webpack }) {
     config.plugins!.push(
