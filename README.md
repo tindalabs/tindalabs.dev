@@ -1,8 +1,9 @@
 # tindalabs-dev
 
-The [tindalabs.dev](https://tindalabs.dev) landing page. A Next.js 15 App Router
-site that documents and live-demos the full Tindalabs stack (Blindspot + Shield
-+ Scent).
+The Tindalabs landing page, **live at
+[tindalabs.github.io/tindalabs.dev](https://tindalabs.github.io/tindalabs.dev/)**.
+A Next.js 15 App Router site that documents and live-demos the full Tindalabs
+stack (Blindspot + Shield + Scent).
 
 It ships as a **fully static export** (`output: 'export'`) deployed to **GitHub
 Pages** — there is no backend. The **LiveStack** panel runs the entire stack in
